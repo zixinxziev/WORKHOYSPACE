@@ -11,7 +11,7 @@ run_worker_first = true
 [[d1_databases]]
 binding = "DB"
 database_name = "ahoys-workspace-db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "8dd054fa-8d44-4257-8c55-2a5df4712953"
 
 [[r2_buckets]]
 binding = "PROOFS"
