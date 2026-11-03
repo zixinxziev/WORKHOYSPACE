@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0b12"><title>Dashboard — Ahoy's Workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/dashboard.css">
+</head>
+<body>
+  <div class="dash-layout">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="/"><span class="brand-mark">A</span><span>AHOY'S <b>WORKSPACE</b><small>Task Management System</small></span></a>
+      <div class="workspace-label">WORKSPACE</div>
+      <nav class="side-nav">
+        <a class="active" href="#overview"><span>▦</span> Dashboard</a>
+        <a href="#tasks"><span>▤</span> Semua Tugas <i>24</i></a>
+        <a href="#create"><span>＋</span> Buat Tugas</a>
+        <a href="#review"><span>◷</span> Menunggu Review <i class="nav-alert">5</i></a>
+        <a href="#completed"><span>✓</span> Tugas Selesai</a>
+      </nav>
+      <div class="workspace-label management-label">MANAGEMENT</div>
+      <nav class="side-nav">
+        <a href="#members"><span>♙</span> Kelola Member</a>
+        <a href="#admins"><span>♧</span> Kelola Admin</a>
+        <a href="#activity"><span>↗</span> Riwayat Aktivitas</a>
+        <a href="#settings"><span>⚙</span> Pengaturan</a>
+      </nav>
+      <div class="sidebar-bottom"><div class="help-card"><b>Need assistance?</b><small>Check workspace guide and help center.</small><a href="#">Open help center ↗</a></div><div class="profile-mini"><span class="profile-avatar">P</span><span><b>Pengawas</b><small>Workspace Owner</small></span><button aria-label="Profile options">···</button></div></div>
+    </aside>
+    <main class="main-panel" id="overview">
+      <header class="dash-topbar"><button class="mobile-toggle" id="toggleSidebar">☰</button><div class="crumb">Workspace <span>/</span> <b>Dashboard</b></div><div class="top-actions"><span class="system-status"><i></i> All systems operational</span><button class="icon-button" aria-label="Notifications">♧<em></em></button><span class="top-avatar">P</span></div></header>
+      <div class="dash-content">
+        <section class="welcome-row"><div><div class="eyebrow">MONDAY, NOVEMBER 03, 2026</div><h1>Overview <span>Dashboard.</span></h1><p>Here's what's happening across your workspace today.</p></div><button class="create-button" id="createTask"><span>＋</span> Create New Task</button></section>
+        <section class="stats-grid">
+          <article class="stat-card"><div class="stat-head"><span>Total Tasks</span><i>▤</i></div><strong>24</strong><small><b>+12%</b> compared to last month</small><div class="sparkline"><i style="height:30%"></i><i style="height:45%"></i><i style="height:38%"></i><i style="height:58%"></i><i style="height:50%"></i><i style="height:75%"></i><i style="height:90%"></i></div></article>
+          <article class="stat-card"><div class="stat-head"><span>In Progress</span><i>◷</i></div><strong>08</strong><small><b>4 members</b> currently active</small><div class="stat-line"><i style="width:56%"></i></div></article>
+          <article class="stat-card"><div class="stat-head"><span>Pending Review</span><i>⌁</i></div><strong>05</strong><small><b class="warm">Needs your attention</b></small><div class="stat-line review-line"><i style="width:35%"></i></div></article>
+          <article class="stat-card"><div class="stat-head"><span>Completed</span><i>✓</i></div><strong>11</strong><small><b>+8%</b> completion rate</small><div class="stat-line complete-line"><i style="width:72%"></i></div></article>
+        </section>
+        <section class="content-grid">
+          <article class="panel tasks-panel" id="tasks"><div class="panel-heading"><div><h2>Recent Tasks</h2><p>Keep track of the latest workspace tasks.</p></div><a href="#all">View all tasks ↗</a></div>
+            <div class="table-wrap"><table><thead><tr><th>TASK NAME</th><th>ASSIGNED TO</th><th>PRIORITY</th><th>STATUS</th><th>DEADLINE</th></tr></thead><tbody>
+              <tr><td><b>Update music library</b><small>AP-024 · Content</small></td><td><span class="member-avatar a1">R</span> Raka</td><td><span class="priority high">High</span></td><td><span class="status progress">● In Progress</span></td><td>Nov 04, 2026</td></tr>
+              <tr><td><b>Prepare event assets</b><small>AP-023 · Design</small></td><td><span class="member-avatar a2">N</span> Nadia</td><td><span class="priority medium">Medium</span></td><td><span class="status submitted">● Submitted</span></td><td>Nov 05, 2026</td></tr>
+              <tr><td><b>Review club configuration</b><small>AP-022 · Development</small></td><td><span class="member-avatar a3">D</span> Dimas</td><td><span class="priority low">Low</span></td><td><span class="status review">● Pending Review</span></td><td>Nov 06, 2026</td></tr>
+              <tr><td><b>Community announcement</b><small>AP-021 · Community</small></td><td><span class="member-avatar a4">S</span> Sinta</td><td><span class="priority medium">Medium</span></td><td><span class="status completed">● Completed</span></td><td>Nov 02, 2026</td></tr>
+            </tbody></table></div>
+          </article>
+          <article class="panel activity-panel" id="activity"><div class="panel-heading"><div><h2>Recent Activity</h2><p>Latest updates from your team.</p></div><button class="more-button">···</button></div>
+            <div class="activity-list"><div class="activity-item"><span class="activity-avatar av-green">N</span><div><b>Nadia submitted a task</b><p>Prepare event assets</p><small>12 minutes ago</small></div></div><div class="activity-item"><span class="activity-avatar av-purple">P</span><div><b>You created a task</b><p>Update music library</p><small>1 hour ago</small></div></div><div class="activity-item"><span class="activity-avatar av-blue">S</span><div><b>Sinta completed a task</b><p>Community announcement</p><small>3 hours ago</small></div></div><div class="activity-item"><span class="activity-avatar av-orange">R</span><div><b>Raka started working</b><p>Update music library</p><small>Yesterday</small></div></div></div><a class="activity-link" href="#activity">See activity history ↗</a>
+          </article>
+          <article class="panel team-panel" id="members"><div class="panel-heading"><div><h2>Team Overview</h2><p>Workspace member activity.</p></div><a href="#members">Manage team ↗</a></div><div class="team-summary"><div><strong>12</strong><small>Total Members</small></div><div><strong>08</strong><small>Active Today</small></div><div><strong>02</strong><small>Admins</small></div></div><div class="team-members"><div><span class="member-avatar a1">R</span><b>Raka Pratama</b><small>Content</small><em class="online">Online</em></div><div><span class="member-avatar a2">N</span><b>Nadia Putri</b><small>Design</small><em class="online">Online</em></div><div><span class="member-avatar a3">D</span><b>Dimas Ardi</b><small>Development</small><em class="offline">Away</em></div></div></article>
+          <article class="panel completion-panel"><div class="panel-heading"><div><h2>Workspace Progress</h2><p>Overall task completion.</p></div><span class="period-select">This month⌄</span></div><div class="completion-visual"><div class="ring"><div><strong>68%</strong><small>Completed</small></div></div><div class="completion-legend"><span><i class="legend-done"></i>Completed <b>11</b></span><span><i class="legend-active"></i>In Progress <b>08</b></span><span><i class="legend-review"></i>Pending Review <b>05</b></span></div></div></article>
+        </section>
+        <footer class="dash-footer"><span>© 2026 Ahoy's Productions</span><span>Ahoy's Workspace <i>·</i> v1.0.0 UI Preview</span></footer>
+      </div>
+    </main>
+  </div>
+  <div class="toast" id="toast">This is a UI preview. Task creation will be connected to the backend in a later phase.</div>
+  <script src="/dashboard.js"></script>
+</body></html>

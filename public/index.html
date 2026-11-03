@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0b12">
+  <meta name="description" content="Ahoy's Workspace — one workspace to manage tasks, progress, and team operations.">
+  <title>Ahoy's Workspace — Task Management System</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <header class="site-header" id="siteHeader">
+    <a class="brand" href="#home"><span class="brand-mark">A</span><span>AHOY'S <b>WORKSPACE</b><small>Task Management System</small></span></a>
+    <button class="mobile-menu" id="mobileMenu" aria-label="Open menu">☰</button>
+    <nav id="mainNav">
+      <a href="#home">Home</a><a href="#features">Features</a><a href="#how">How It Works</a><a href="#about">About</a>
+      <button class="nav-login" data-open-login>Login</button><button class="nav-register" data-open-login>Create Account</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero section-wrap" id="home">
+      <div class="hero-copy">
+        <div class="eyebrow"><span class="pulse"></span> AHOY'S PRODUCTIONS · WORKSPACE</div>
+        <h1>Work Smarter.<br><span>Stay Organized.</span></h1>
+        <p>Satu workspace untuk mengelola tugas, memantau progress, dan mengatur pekerjaan tim Ahoy's Productions.</p>
+        <div class="hero-actions"><button class="btn-primary" data-open-login>Get Started <span>↗</span></button><a class="btn-quiet" href="#features">Explore Features <span>↓</span></a></div>
+        <div class="hero-footnote"><span class="mini-check">✓</span> One workspace. Clear progress. Better teamwork.</div>
+      </div>
+      <div class="hero-visual">
+        <div class="visual-glow"></div>
+        <div class="tablet-shell" id="tablet">
+          <div class="tablet-camera"></div>
+          <div class="tablet-screen">
+            <div class="demo-top"><span class="demo-logo">A</span><span>Ahoy's Workspace</span><span class="demo-avatar">A</span></div>
+            <div class="demo-content" id="demoContent">
+              <div class="demo-welcome"><small>WORKSPACE OVERVIEW</small><b>Good morning, Admin.</b><span>Your team's progress at a glance.</span></div>
+              <div class="demo-stats"><div><small>Total Tasks</small><b>24</b><i>↗ 12%</i></div><div><small>In Progress</small><b>08</b><i>Active</i></div><div><small>Pending Review</small><b>05</b><i>Needs review</i></div></div>
+              <div class="demo-task-head"><b>Recent Tasks</b><small>View all</small></div>
+              <div class="demo-task"><span class="task-dot violet"></span><span><b>Update music library</b><small>Content Team · Today</small></span><em>In Progress</em></div>
+              <div class="demo-task"><span class="task-dot blue"></span><span><b>Prepare event assets</b><small>Design Team · Nov 05</small></span><em class="submitted">Submitted</em></div>
+              <div class="demo-task"><span class="task-dot gray"></span><span><b>Review club configuration</b><small>Development · Nov 06</small></span><em class="pending">Pending</em></div>
+              <div class="demo-progress"><span>Team completion</span><b>68%</b><div><i></i></div></div>
+            </div>
+            <div class="demo-bottom"><span>● Dashboard</span><span>▤ Tasks</span><span>◷ Activity</span><span>⚙ Settings</span></div>
+          </div>
+        </div>
+        <div class="float-chip chip-top"><span class="chip-icon">✓</span><span><b>Task approved</b><small>Just now</small></span></div>
+        <div class="float-chip chip-bottom"><span class="chip-icon chip-purple">↗</span><span><b>68% progress</b><small>Team overview</small></span></div>
+        <div class="demo-caption"><span class="live-dot"></span> LIVE PRODUCT PREVIEW <span id="demoStep">01 / 04</span></div>
+      </div>
+    </section>
+
+    <section class="trust-strip"><span>BUILT FOR AHOY'S PRODUCTIONS</span><i></i><span>ORGANIZE</span><i></i><span>COLLABORATE</span><i></i><span>GET THINGS DONE</span></section>
+
+    <section class="section-wrap content-section" id="features">
+      <div class="section-heading"><div class="eyebrow">WHAT YOU CAN DO</div><h2>Everything in one <span>workspace.</span></h2><p>Tools that keep every task, update, and approval in one clear flow.</p></div>
+      <div class="feature-grid">
+        <article class="feature-card"><div class="feature-icon">▤</div><h3>Task Management</h3><p>Create tasks, assign team members, set priorities, and keep deadlines visible.</p><span>01 / ORGANIZE</span></article>
+        <article class="feature-card"><div class="feature-icon">↥</div><h3>Proof Submission</h3><p>Members can upload files, images, and notes as evidence of completed work.</p><span>02 / SUBMIT</span></article>
+        <article class="feature-card"><div class="feature-icon">◷</div><h3>Progress Tracking</h3><p>Follow each assignment from the first step to final approval.</p><span>03 / TRACK</span></article>
+        <article class="feature-card"><div class="feature-icon">✓</div><h3>Review & Approval</h3><p>Admins review submissions, approve work, or request revisions with notes.</p><span>04 / REVIEW</span></article>
+      </div>
+    </section>
+
+    <section class="section-wrap content-section workflow-section" id="how">
+      <div class="section-heading"><div class="eyebrow">A CLEAR WORKFLOW</div><h2>From assigned to <span>completed.</span></h2><p>Every task has a visible status, so everyone knows what happens next.</p></div>
+      <div class="workflow">
+        <div class="workflow-step"><b>01</b><span class="workflow-line"></span><h3>Task Created</h3><p>Admin creates and assigns a task.</p></div>
+        <div class="workflow-step"><b>02</b><span class="workflow-line"></span><h3>In Progress</h3><p>Member starts working on it.</p></div>
+        <div class="workflow-step"><b>03</b><span class="workflow-line"></span><h3>Submitted</h3><p>Proof and notes are uploaded.</p></div>
+        <div class="workflow-step"><b>04</b><span class="workflow-line"></span><h3>Reviewed</h3><p>Admin approves or requests revision.</p></div>
+        <div class="workflow-step"><b>05</b><span class="workflow-line"></span><h3>Completed</h3><p>Approved work is marked complete.</p></div>
+      </div>
+    </section>
+
+    <section class="section-wrap content-section roles-section" id="about">
+      <div class="section-heading"><div class="eyebrow">BUILT AROUND YOUR TEAM</div><h2>Clear roles. <span>Clear access.</span></h2><p>Each role gets the tools and permissions needed to do their part.</p></div>
+      <div class="role-grid">
+        <article class="role-card"><span class="role-number">01</span><h3>Pengawas</h3><p>Full workspace visibility, account administration, and system oversight.</p><small>FULL ACCESS</small></article>
+        <article class="role-card"><span class="role-number">02</span><h3>Admin</h3><p>Manage tasks, assign members, review proof, and monitor team activity.</p><small>WORKSPACE MANAGEMENT</small></article>
+        <article class="role-card"><span class="role-number">03</span><h3>Member</h3><p>View assigned tasks, submit proof, and follow personal task history.</p><small>PERSONAL TASKS</small></article>
+      </div>
+    </section>
+
+    <section class="section-wrap final-cta"><div><div class="eyebrow">READY TO GET ORGANIZED?</div><h2>Make every task <span>count.</span></h2><p>Bring your team's workflow into one place.</p></div><button class="btn-primary" data-open-login>Enter Workspace <span>↗</span></button></section>
+  </main>
+  <footer><a class="brand footer-brand" href="#home"><span class="brand-mark">A</span><span>AHOY'S <b>WORKSPACE</b><small>Task Management System</small></span></a><span>© 2026 Ahoy's Productions. All rights reserved.</span><a href="#home">Back to top ↑</a></footer>
+
+  <div class="modal-backdrop" id="loginModal" aria-hidden="true">
+    <section class="login-modal" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
+      <button class="modal-close" id="closeModal" aria-label="Close">×</button>
+      <div class="modal-brand brand-mark">A</div><div class="eyebrow">AHOY'S PRODUCTIONS</div>
+      <h2 id="loginTitle">Welcome back.</h2><p>Sign in to continue to your workspace.</p>
+      <form id="loginForm"><label>Username<input name="username" autocomplete="username" placeholder="Enter your username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required></label><button class="btn-primary full-btn" type="submit">Login <span>↗</span></button></form>
+      <div class="modal-note">New to the workspace? <button id="showRegister">Create an account</button></div>
+      <div class="form-message" id="formMessage">Authentication will be connected when backend setup is complete.</div>
+    </section>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
