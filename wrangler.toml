@@ -1,4 +1,5 @@
-name = "ahoys-workspace"
+
+name = "workhoyspace"
 main = "src/index.js"
 compatibility_date = "2026-11-03"
 workers_dev = true
@@ -10,12 +11,8 @@ run_worker_first = true
 
 [[d1_databases]]
 binding = "DB"
-database_name = "ahoys-workspace-db"
+database_name = "workhoyspace_db"
 database_id = "8dd054fa-8d44-4257-8c55-2a5df4712953"
-
-[[r2_buckets]]
-binding = "PROOFS"
-bucket_name = "ahoys-workspace-proofs"
 
 [vars]
 APP_NAME = "Ahoy's Workspace"
