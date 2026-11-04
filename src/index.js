@@ -83,9 +83,12 @@ async function handleApi(request, env, url) {
       await env.DB.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, 'pengawas')")
         .bind(userId, username, await passwordHash(password)).run();
        } catch (error) {
-      console.error("FIRST_PENGAWAS_INSERT_ERROR:", error);
-      return json({ error: "ACCOUNT_CREATE_FAILED" }, 400);
-    }
+  console.error("FIRST_PENGAWAS_INSERT_ERROR:", error);
+  return json({
+    error: "ACCOUNT_CREATE_FAILED",
+    detail: String(error?.message || error)
+  }, 500);
+}
     await logActivity(env, userId, "first_pengawas_created", "user", userId);
     return createSession(env, userId, { id: userId, username, role: "pengawas" });
   }
