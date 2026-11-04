@@ -9,14 +9,13 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS one_pengawas_only
-ON users(role) WHERE role = 'pengawas';
+CREATE UNIQUE INDEX IF NOT EXISTS one_pengawas_only ON users(role) WHERE role = 'pengawas';
 
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   description TEXT,
+  target TEXT,
   deadline TEXT,
   priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low','medium','high')),
   created_by TEXT NOT NULL REFERENCES users(id),
@@ -59,9 +58,15 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_assignments_member_status
-ON task_assignments(member_id, status);
-CREATE INDEX IF NOT EXISTS idx_assignments_task
-ON task_assignments(task_id);
-CREATE INDEX IF NOT EXISTS idx_logs_created
-ON activity_logs(created_at DESC);
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_assignments_member_status ON task_assignments(member_id, status);
+CREATE INDEX IF NOT EXISTS idx_assignments_task ON task_assignments(task_id);
+CREATE INDEX IF NOT EXISTS idx_logs_created ON activity_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
