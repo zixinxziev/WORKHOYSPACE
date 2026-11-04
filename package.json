@@ -1,13 +1,14 @@
 {
-  "name": "ahoys-workspace",
+  "name": "workhoyspace",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "db:init:local": "wrangler d1 execute ahoys-workspace-db --local --file=./schema.sql",
-    "db:init:remote": "wrangler d1 execute ahoys-workspace-db --remote --file=./schema.sql"
+    "db:init:local": "wrangler d1 execute workhoyspace_db --local --file=./schema.sql",
+    "db:init:remote": "wrangler d1 execute workhoyspace_db --remote --file=./schema.sql",
+    "db:migrate:target": "wrangler d1 execute workhoyspace_db --remote --file=./migrations/0001_add_target_column.sql"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
