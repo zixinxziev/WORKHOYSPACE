@@ -29,36 +29,19 @@ $$("nav a").forEach(a => a.addEventListener("click", () => nav?.classList.remove
 const modal = $("#loginModal"), form = $("#authForm"), message = $("#formMessage");
 function setMode(next) {
   mode = next;
-  const titles = {
-    login: ["Welcome back.", "Sign in to continue to your workspace.", "Login"],
-    register: ["Create your account.", "Register as a workspace member.", "Create Account"],
-    setup: ["Set up your workspace.", "Create the first Pengawas account. This setup is available only while no account exists.", "Create Pengawas"]
-  };
-
+  const titles = {login:["Welcome back.","Sign in to continue to your workspace.","Login"],
+    register:["Create your account.","Register as a workspace member.","Create Account"],
+    setup:["Set up your workspace.","Create the first Pengawas account. This setup is available only while no account exists.","Create Pengawas"]};
   $("#loginTitle").textContent = titles[mode][0];
   $("#loginSubtitle").textContent = titles[mode][1];
   $("#authSubmit").innerHTML = `${titles[mode][2]} <span>↗</span>`;
   $("#setupSecretLabel").classList.toggle("hidden", mode !== "setup");
-
-  // Registration has its own confirmation field; login and first-time setup do not.
-  let confirmLabel = $("#confirmPasswordLabel", form);
-  if (!confirmLabel) {
-    confirmLabel = document.createElement("label");
-    confirmLabel.id = "confirmPasswordLabel";
-    confirmLabel.innerHTML = 'Confirm password<input name="confirmPassword" type="password" autocomplete="new-password" placeholder="Re-enter your password" minlength="8">';
-    $("#authSubmit").before(confirmLabel);
-  }
-  confirmLabel.classList.toggle("hidden", mode !== "register");
-  const passwordInput = $('input[name="password"]', form);
-  if (passwordInput) passwordInput.autocomplete = mode === "login" ? "current-password" : "new-password";
-  const confirmInput = $('input[name="confirmPassword"]', form);
-  if (confirmInput) confirmInput.required = mode === "register";
-
   $("#modalNote").classList.toggle("hidden", mode === "setup");
   $("#modalNote").innerHTML = mode === "register"
     ? 'Already have an account? <button type="button" id="showLogin">Login</button>'
     : 'New to the workspace? <button type="button" id="showRegister">Create an account</button>';
-
+  $("#showLogin")?.addEventListener("click", () => setMode("login"));
+  $("#showRegister")?.addEventListener("click", () => setMode("register"));
   message.textContent = "";
   form.reset();
 }
@@ -66,13 +49,6 @@ function openModal(next="login") { setMode(next); modal.classList.add("open"); m
 function closeModal(){ modal.classList.remove("open"); modal.setAttribute("aria-hidden","true"); }
 $$("[data-open-login]").forEach(b => b.addEventListener("click", () => openModal("login")));
 $$("[data-open-register]").forEach(b => b.addEventListener("click", () => openModal("register")));
-// Event delegation keeps the Login / Create Account switch working after modal text is replaced.
-$("#modalNote").addEventListener("click", e => {
-  const switchButton = e.target.closest("#showLogin, #showRegister");
-  if (!switchButton) return;
-  e.preventDefault();
-  setMode(switchButton.id === "showRegister" ? "register" : "login");
-});
 $("#closeModal").addEventListener("click", closeModal);
 modal.addEventListener("click", e => { if(e.target===modal) closeModal(); });
 document.addEventListener("keydown", e => { if(e.key==="Escape") closeModal(); });
@@ -101,10 +77,6 @@ function humanError(error) {
 form.addEventListener("submit", async e => {
   e.preventDefault(); message.textContent = "Please wait...";
   const fd = new FormData(form), body = {username:fd.get("username"),password:fd.get("password")};
-  if (mode === "register" && body.password !== fd.get("confirmPassword")) {
-    message.textContent = "Konfirmasi password tidak sama.";
-    return;
-  }
   let endpoint = "/auth/login";
   if (mode==="register") endpoint="/auth/register";
   if (mode==="setup") { endpoint="/setup/first-pengawas"; body.setupSecret=fd.get("setupSecret"); }
