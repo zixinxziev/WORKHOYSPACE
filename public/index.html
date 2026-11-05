@@ -61,6 +61,7 @@
     <form id="authForm"><label id="setupSecretLabel" class="hidden">Setup secret<input name="setupSecret" type="password" autocomplete="off" placeholder="Enter setup secret"></label>
       <label>Username<input name="username" autocomplete="username" placeholder="Enter username" minlength="3" maxlength="24" required></label>
       <label>Password<input name="password" type="password" autocomplete="current-password" placeholder="At least 8 characters" minlength="8" required></label>
+      <label id="registerDivisionLabel" class="hidden">Choose your division<select name="divisionId" id="registerDivision" required><option value="">Choose your division</option></select></label>
       <button class="btn-primary full-btn" type="submit" id="authSubmit">Login <span>↗</span></button></form>
     <div class="modal-note" id="modalNote">New to the workspace? <button type="button" id="showRegister">Create an account</button></div>
     <div class="form-message" id="formMessage" role="status"></div>
