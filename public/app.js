@@ -237,6 +237,7 @@ async function showView(view) {
         <div class="ws-task-list ws-section-gap">${divisionsCache.map(d=>`<form class="ws-task division-edit-form" data-division-form="${escapeHtml(d.id)}"><div class="ws-task-head"><div><h3>${escapeHtml(d.name)}</h3><p>${Number(d.member_count||0)} member(s) · ${escapeHtml(d.status)}</p></div><span class="ws-pill">Division</span></div><div class="ws-form"><div class="ws-field"><label>Name</label><input name="name" value="${escapeHtml(d.name)}" required maxlength="80"></div><div class="ws-field"><label>Description</label><input name="description" value="${escapeHtml(d.description||"")}" maxlength="300"></div><div class="ws-field"><label>Status</label><select name="status"><option value="active" ${d.status==="active"?"selected":""}>Active</option><option value="disabled" ${d.status==="disabled"?"selected":""}>Disabled</option></select></div><div class="ws-field"><label>&nbsp;</label><button class="ws-btn secondary" type="submit">Save division</button></div></div></form>`).join("")||'<div class="ws-empty">No divisions created yet.</div>'}</div>
       </section>
       <section class="ws-panel"><h2>Member accounts</h2><div class="ws-task-list">${usersCache.map(u=>`<div class="ws-task"><div class="ws-task-head"><div><h3>${escapeHtml(u.username)}</h3><p>Joined ${dateText(u.created_at)}</p></div><span class="ws-pill">${escapeHtml(u.role)}</span></div>${u.role!=="pengawas"?`<div class="ws-member-tools"><label class="ws-note">Division</label><select data-member-division="${escapeHtml(u.id)}" class="ws-inline-select">${divisionOptions.replace(`value="${escapeHtml(u.division_id||"")}"`,`value="${escapeHtml(u.division_id||"")}" selected`)}</select><button class="ws-btn secondary" data-save-member-division="${escapeHtml(u.id)}">Save division</button></div>`:""}${currentUser.role==="pengawas" && u.role!=="pengawas"?`<div class="ws-actions"><button class="ws-btn secondary" data-role-user="${u.id}" data-role="${u.role==="admin"?"member":"admin"}">${u.role==="admin"?"Set as Member":"Promote to Admin"}</button></div>`:""}</div>`).join("")||'<div class="ws-empty">No members yet.</div>'}</div></section>
+      <section class="ws-panel"><div class="ws-panel-heading"><div><h2>Google Sheets reporting</h2><p class="ws-muted">Send the latest workspace data from D1 to the connected Google Spreadsheet. This also performs the initial sync for existing data.</p></div><button class="ws-btn" id="googleSheetsSyncBtn" type="button">Sync Google Sheets</button></div><p class="ws-note" id="googleSheetsSyncStatus" aria-live="polite">Only Admin and Pengawas can run a manual sync.</p></section>
       <section class="ws-panel"><div class="ws-panel-heading"><div><h2>Activity logs</h2><p class="ws-muted">Only Admin and Pengawas can manage workspace activity history.</p></div><button class="ws-btn danger" id="resetHistoryBtn">Reset history</button></div>
         <div class="ws-task-list">${activityCache.slice(0,40).map(a=>`<div class="ws-log-row"><div><b>${escapeHtml((a.action||"").replaceAll("_"," "))}</b><small>${escapeHtml(a.actor_username||"System")} · ${dateText(a.created_at)}</small></div><span class="ws-note">${escapeHtml(a.target_type||"-")}</span></div>`).join("")||'<div class="ws-empty">No activity logs.</div>'}</div>
       </section>`;
@@ -246,6 +247,7 @@ async function showView(view) {
     $$("[data-save-member-division]").forEach(b=>b.addEventListener("click",saveMemberDivision));
     $$("[data-role-user]").forEach(b=>b.addEventListener("click",changeRole));
     $("#resetHistoryBtn").addEventListener("click",resetActivityHistory);
+    $("#googleSheetsSyncBtn").addEventListener("click",syncGoogleSheetsNow);
   }
   bindTaskActions();
 }
@@ -297,6 +299,31 @@ async function saveMemberDivision(e) {
   try { await api(`/admin/users/${encodeURIComponent(b.dataset.saveMemberDivision)}/division`,{method:"PATCH",body:JSON.stringify({divisionId:select.value||null})}); await showView("manage"); }
   catch(err) { alert(humanError(err)); }
 }
+async function syncGoogleSheetsNow(e) {
+  const button = e.currentTarget;
+  const status = $("#googleSheetsSyncStatus");
+  button.disabled = true;
+  button.textContent = "Syncing…";
+  status.textContent = "Sending the latest D1 data to Google Sheets. Please wait…";
+  try {
+    const result = await api("/admin/reports/sync", { method: "POST", body: "{}" });
+    if (!result || result.ok !== true) {
+      throw new Error(result && result.error ? result.error : "GOOGLE_SHEETS_SYNC_FAILED");
+    }
+    const updated = result.updated && typeof result.updated === "object"
+      ? Object.entries(result.updated).map(([name, count]) => `${name}: ${count}`).join(" · ")
+      : "Sheets updated";
+    status.textContent = `Sync successful. ${updated}`;
+    alert("Google Sheets berhasil disinkronkan dengan data terbaru dari D1.");
+  } catch (error) {
+    status.textContent = `Sync failed: ${humanError(error)}`;
+    alert(humanError(error));
+  } finally {
+    button.disabled = false;
+    button.textContent = "Sync Google Sheets";
+  }
+}
+
 async function resetActivityHistory() {
   const warning="This will clear workspace activity logs for everyone. Accounts, tasks, progress, and uploaded proofs will NOT be deleted. A single audit record of this reset will remain.";
   if(!confirm(`WARNING — RESET ACTIVITY HISTORY\n\n${warning}\n\nContinue?`)) return;
