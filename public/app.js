@@ -38,6 +38,8 @@ function setMode(next) {
   $("#loginSubtitle").textContent = titles[mode][1];
   $("#authSubmit").innerHTML = `${titles[mode][2]} <span>↗</span>`;
   $("#setupSecretLabel").classList.toggle("hidden", mode !== "setup");
+  $("#registerDivisionLabel").classList.toggle("hidden", mode !== "register");
+  $("#registerDivision").required = mode === "register";
   $("#modalNote").classList.toggle("hidden", mode === "setup");
   $("#modalNote").innerHTML = mode === "register"
     ? 'Already have an account? <button type="button" id="showLogin">Login</button>'
@@ -46,6 +48,23 @@ function setMode(next) {
   $("#showRegister")?.addEventListener("click", () => setMode("register"));
   message.textContent = "";
   form.reset();
+  if (mode === "register") loadRegisterDivisions();
+}
+async function loadRegisterDivisions() {
+  const select = $("#registerDivision");
+  select.innerHTML = '<option value="">Loading divisions…</option>';
+  try {
+    const response = await fetch(API + "/divisions/available", { cache: "no-store" });
+    const divisions = await response.json();
+    if (!response.ok) throw new Error("Unable to load divisions");
+    select.innerHTML = '<option value="">Choose your division</option>' + divisions.map(d =>
+      `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`
+    ).join("");
+    if (!divisions.length) message.textContent = "Belum ada divisi aktif. Hubungi Admin/Pengawas untuk membuat divisi sebelum registrasi.";
+  } catch (error) {
+    select.innerHTML = '<option value="">Divisions unavailable</option>';
+    message.textContent = "Daftar divisi gagal dimuat. Coba buka form registrasi lagi.";
+  }
 }
 function openModal(next="login") { setMode(next); modal.classList.add("open"); modal.setAttribute("aria-hidden","false"); }
 function closeModal(){ modal.classList.remove("open"); modal.setAttribute("aria-hidden","true"); }
@@ -69,7 +88,7 @@ async function api(path, options={}) {
 function humanError(error) {
   const map = {INVALID_CREDENTIALS:"Username atau password salah.",USERNAME_ALREADY_EXISTS:"Username sudah digunakan.",
     USERNAME_FORMAT_INVALID:"Username 3–24 karakter, hanya huruf kecil, angka, dan underscore.",
-    PASSWORD_TOO_SHORT:"Password minimal 8 karakter.",PASSWORD_PEPPER_NOT_CONFIGURED:"Password security secret belum dipasang di Cloudflare Worker.",INVALID_SETUP_SECRET:"Setup secret salah.",
+    PASSWORD_TOO_SHORT:"Password minimal 8 karakter.",DIVISION_REQUIRED:"Pilih divisi sebelum membuat akun.",ACTIVE_DIVISION_NOT_FOUND:"Divisi tidak tersedia atau sudah dinonaktifkan.",TASK_TITLE_REQUIRED:"Judul task wajib diisi.",REPORTING_DEFERRED:"Laporan Google Sheets akan diaktifkan pada tahap berikutnya.",PASSWORD_PEPPER_NOT_CONFIGURED:"Password security secret belum dipasang di Cloudflare Worker.",INVALID_SETUP_SECRET:"Setup secret salah.",
     SETUP_SECRET_NOT_CONFIGURED:"SETUP_SECRET belum dipasang di Cloudflare Worker.",
     INITIAL_SETUP_ALREADY_COMPLETED:"Setup Pengawas sudah pernah dilakukan.",
     TARGET_USER_NOT_FOUND:"Username target tidak ditemukan.",FILE_TOO_LARGE_MAX_5MB:"Ukuran file maksimal 5 MB.",
@@ -113,6 +132,7 @@ form.addEventListener("submit", async e => {
     if (mode === "login") result = await performChallengeLogin(username, password);
     else {
       const body = { username, password };
+      if (mode === "register") body.divisionId = fd.get("divisionId");
       if (mode === "setup") body.setupSecret = fd.get("setupSecret");
       result = await api(endpoint,{method:"POST",body:JSON.stringify(body)});
     }
@@ -126,7 +146,7 @@ async function checkInitialSetup() {
   catch {}
 }
 function escapeHtml(s) { return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
-function labelStatus(s) { return ({not_started:"Not started",in_progress:"In progress",submitted:"Submitted",revision:"Revision requested",completed:"Completed"})[s]||s; }
+function labelStatus(s) { return ({not_started:"Not started",in_progress:"In progress",submitted:"Submitted",revision:"Revision requested",completed:"Completed",waiting:"Waiting for members"})[s]||s; }
 function pill(s) { const cls=s==="completed"?"green":s==="submitted"?"blue":s==="revision"?"red":s==="in_progress"?"warn":""; return `<span class="ws-pill ${cls}">${escapeHtml(labelStatus(s))}</span>`; }
 function dateText(s) { if(!s) return "No deadline"; const d=new Date(s); return Number.isNaN(d.getTime())?escapeHtml(s):d.toLocaleString(); }
 function shell() {
@@ -171,6 +191,25 @@ function taskCard(t, admin=false) {
     <div class="ws-proof-list" data-proofs="${t.assignment_id}"><span class="ws-note">Loading submitted files...</span></div>
     <div class="ws-actions">${actions}</div></article>`;
 }
+function renderAssignmentTables(rows, staff, heading) {
+  const grouped = new Map();
+  for (const row of rows) {
+    const name = staff ? (row.division_name || "Unassigned / Legacy") : (currentUser.division_name || "Your Division");
+    if (!grouped.has(name)) grouped.set(name, []);
+    grouped.get(name).push(row);
+  }
+  if (!staff && !grouped.size) grouped.set(currentUser.division_name || "Your Division", []);
+  if (staff && !grouped.size) return '<section class="ws-panel"><div class="ws-empty">No assignments yet.</div></section>';
+  return [...grouped.entries()].map(([division, items]) => `
+    <section class="ws-panel ws-division-table-panel">
+      <div class="ws-panel-heading"><div><h2>${escapeHtml(heading)} — ${escapeHtml(division)}</h2><p class="ws-muted">${items.length} assignment(s)</p></div></div>
+      ${items.length ? `<div class="ws-table-wrap"><table class="ws-table ws-division-table"><thead><tr><th>Task</th>${staff?"<th>Username</th>":""}<th>Status</th><th>Deadline</th>${heading==="History"?"<th>Submitted</th><th>Reviewed</th>":""}<th>Details</th></tr></thead><tbody>
+      ${items.map(t => `<tr><td><strong>${escapeHtml(t.title)}</strong><small class="ws-table-sub">${escapeHtml(t.priority||"medium")} priority</small></td>${staff?`<td>${escapeHtml(t.member_username||"—")}</td>`:""}<td>${pill(t.assignment_status)}</td><td>${dateText(t.deadline)}</td>${heading==="History"?`<td>${dateText(t.submitted_at)}</td><td>${dateText(t.reviewed_at)}</td>`:""}<td>${t.assignment_id?`<button class="ws-btn secondary" type="button" data-expand-assignment="${escapeHtml(t.assignment_id)}">Details</button>`:'<span class="ws-note">Awaiting members</span>'}</td></tr>
+      ${t.assignment_id?`<tr id="assignment-detail-${escapeHtml(t.assignment_id)}" class="ws-assignment-detail" hidden><td colspan="${staff?(heading==="History"?7:5):(heading==="History"?6:4)}">${taskCard(t,staff)}</td></tr>`:""}`).join("")}
+      </tbody></table></div>` : '<div class="ws-empty">No tasks in this division yet.</div>'}
+    </section>`).join("");
+}
+
 async function showView(view) {
   activeView=view; $$("[data-view]").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
   const titles={dashboard:["Workspace overview","Your work, progress, and updates in one place."],tasks:["Tasks","Assignments and current work status."],history:["History","Completed work and recent activity."],manage:["Workspace management","Create tasks and manage workspace members."]};
@@ -178,17 +217,17 @@ async function showView(view) {
   const box=$("#viewContent");
   await refreshData();
   if(view==="dashboard") {
-    box.innerHTML=stats()+(currentUser.role==="member"?`<section class="ws-panel"><h2>Your division</h2><p class="ws-muted">${escapeHtml(divisionsCache[0]?.name || "No division assigned yet")}</p></section>`:"")+`<section class="ws-panel"><h2>${currentUser.role==="member"?"Your assigned tasks":"Recent assignments"}</h2><div class="ws-task-list">${tasksCache.slice(0,5).map(t=>taskCard(t,currentUser.role!=="member")).join("")||'<div class="ws-empty">No tasks yet.</div>'}</div></section>`;
+    box.innerHTML=stats()+(currentUser.role==="member"?`<section class="ws-panel"><h2>Your division</h2><p class="ws-muted">${escapeHtml(currentUser.division_name || divisionsCache[0]?.name || "No division assigned yet")}</p></section>`:"")+`<section class="ws-panel"><h2>${currentUser.role==="member"?"Your assigned tasks":"Recent assignments"}</h2><div class="ws-task-list">${tasksCache.filter(t=>t.assignment_id).slice(0,5).map(t=>taskCard(t,currentUser.role!=="member")).join("")||'<div class="ws-empty">No assignments yet.</div>'}</div></section>`;
   } else if(view==="tasks") {
-    box.innerHTML=`<section class="ws-panel"><h2>All tasks</h2><div class="ws-task-list">${tasksCache.map(t=>taskCard(t,currentUser.role!=="member")).join("")||'<div class="ws-empty">No tasks found.</div>'}</div></section>`;
+    box.innerHTML=renderAssignmentTables(tasksCache,currentUser.role!=="member","Tasks");
   } else if(view==="history") {
     const rows=tasksCache.filter(t=>["completed","submitted","revision"].includes(t.assignment_status));
-    box.innerHTML=`<section class="ws-panel"><h2>Task history</h2><div class="ws-task-list">${rows.map(t=>taskCard(t,currentUser.role!=="member")).join("")||'<div class="ws-empty">No activity history yet.</div>'}</div></section>`;
+    box.innerHTML=renderAssignmentTables(rows,currentUser.role!=="member","History");
   } else if(view==="manage" && currentUser.role!=="member") {
     const divisionOptions = `<option value="">No division</option>` + divisionsCache.map(d=>`<option value="${escapeHtml(d.id)}" ${d.status!=="active"?"disabled":""}>${escapeHtml(d.name)}${d.status!=="active"?" (disabled)":""}</option>`).join("");
-    box.innerHTML=`<section class="ws-panel"><h2>Create a task</h2><p class="ws-muted">Target accepts one or more usernames separated by commas. Use <b>all</b> to assign every active member.</p>
+    box.innerHTML=`<section class="ws-panel"><h2>Create a task</h2><p class="ws-muted">Choose one division. One click assigns this task to every active member in that division.</p>
       <form id="createTaskForm" class="ws-form"><div class="ws-field full"><label>Task title *</label><input name="title" required maxlength="140" placeholder="Task title"></div>
-      <div class="ws-field"><label>Target *</label><input name="target" required placeholder="username1, username2 or all"></div>
+      <div class="ws-field full"><label>Target division *</label><select name="divisionId" required><option value="">Choose division</option>${divisionsCache.filter(d=>d.status==="active").map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join("")}</select></div>
       <div class="ws-field"><label>Deadline</label><input name="deadline" type="datetime-local"></div>
       <div class="ws-field"><label>Priority</label><select name="priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
       <div class="ws-field full"><label>Description</label><textarea name="description" placeholder="Task details and expected result"></textarea></div>
@@ -200,7 +239,6 @@ async function showView(view) {
       <section class="ws-panel"><h2>Member accounts</h2><div class="ws-task-list">${usersCache.map(u=>`<div class="ws-task"><div class="ws-task-head"><div><h3>${escapeHtml(u.username)}</h3><p>Joined ${dateText(u.created_at)}</p></div><span class="ws-pill">${escapeHtml(u.role)}</span></div>${u.role!=="pengawas"?`<div class="ws-member-tools"><label class="ws-note">Division</label><select data-member-division="${escapeHtml(u.id)}" class="ws-inline-select">${divisionOptions.replace(`value="${escapeHtml(u.division_id||"")}"`,`value="${escapeHtml(u.division_id||"")}" selected`)}</select><button class="ws-btn secondary" data-save-member-division="${escapeHtml(u.id)}">Save division</button></div>`:""}${currentUser.role==="pengawas" && u.role!=="pengawas"?`<div class="ws-actions"><button class="ws-btn secondary" data-role-user="${u.id}" data-role="${u.role==="admin"?"member":"admin"}">${u.role==="admin"?"Set as Member":"Promote to Admin"}</button></div>`:""}</div>`).join("")||'<div class="ws-empty">No members yet.</div>'}</div></section>
       <section class="ws-panel"><div class="ws-panel-heading"><div><h2>Activity logs</h2><p class="ws-muted">Only Admin and Pengawas can manage workspace activity history.</p></div><button class="ws-btn danger" id="resetHistoryBtn">Reset history</button></div>
         <div class="ws-task-list">${activityCache.slice(0,40).map(a=>`<div class="ws-log-row"><div><b>${escapeHtml((a.action||"").replaceAll("_"," "))}</b><small>${escapeHtml(a.actor_username||"System")} · ${dateText(a.created_at)}</small></div><span class="ws-note">${escapeHtml(a.target_type||"-")}</span></div>`).join("")||'<div class="ws-empty">No activity logs.</div>'}</div>
-        <div class="ws-actions ws-report-actions"><button class="ws-btn secondary" id="syncSheetsBtn">Sync Google Sheets now</button><span class="ws-note">Automatic sync runs after workspace data changes when configured.</span></div>
       </section>`;
     $("#createTaskForm").addEventListener("submit",createTask);
     $("#createDivisionForm").addEventListener("submit",createDivision);
@@ -208,11 +246,14 @@ async function showView(view) {
     $$("[data-save-member-division]").forEach(b=>b.addEventListener("click",saveMemberDivision));
     $$("[data-role-user]").forEach(b=>b.addEventListener("click",changeRole));
     $("#resetHistoryBtn").addEventListener("click",resetActivityHistory);
-    $("#syncSheetsBtn").addEventListener("click",syncSheetsNow);
   }
   bindTaskActions();
 }
 function bindTaskActions() {
+  $$ ("[data-expand-assignment]").forEach(b=>b.addEventListener("click",()=>{
+    const row=$("#assignment-detail-"+CSS.escape(b.dataset.expandAssignment));
+    if(row) { row.hidden=!row.hidden; b.textContent=row.hidden?"Details":"Hide details"; }
+  }));
   $$(".ws-proof-list[data-proofs]").forEach(async box => {
     try {
       const files = await api(`/assignments/${box.dataset.proofs}/proofs`);
@@ -264,15 +305,10 @@ async function resetActivityHistory() {
   try { const result=await api("/admin/activity/reset",{method:"POST",body:JSON.stringify({confirmation:phrase})}); alert(`Activity history reset. ${result.deletedCount} log(s) cleared. One audit record was retained.`); await showView("manage"); }
   catch(err) { alert(humanError(err)); }
 }
-async function syncSheetsNow() {
-  const b=$("#syncSheetsBtn"); b.disabled=true; b.textContent="Syncing…";
-  try { await api("/admin/reports/sync",{method:"POST",body:"{}"}); alert("Google Sheets report synced successfully."); await showView("manage"); }
-  catch(err) { alert(humanError(err)); b.disabled=false; b.textContent="Sync Google Sheets now"; }
-}
 async function createTask(e) {
   e.preventDefault(); const data=Object.fromEntries(new FormData(e.currentTarget).entries());
   if(data.deadline) data.deadline=new Date(data.deadline).toISOString();
-  try { const result=await api("/tasks",{method:"POST",body:JSON.stringify(data)}); alert(`Task created. Assigned to ${result.assigned} member(s).`); await showView("tasks"); }
+  try { const result=await api("/tasks",{method:"POST",body:JSON.stringify(data)}); alert(`Task created for ${result.division}. Assigned to ${result.assigned} active member(s). New members joining this division will also receive its existing tasks.`); await showView("tasks"); }
   catch(err){alert(humanError(err));}
 }
 async function changeRole(e) {
