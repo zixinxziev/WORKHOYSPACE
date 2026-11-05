@@ -8,7 +8,8 @@
     "deploy": "wrangler deploy",
     "db:init:local": "wrangler d1 execute workhoyspace_db --local --file=./schema.sql",
     "db:init:remote": "wrangler d1 execute workhoyspace_db --remote --file=./schema.sql",
-    "db:migrate:target": "wrangler d1 execute workhoyspace_db --remote --file=./migrations/0001_add_target_column.sql"
+    "db:migrate:target": "wrangler d1 execute workhoyspace_db --remote --file=./migrations/0001_add_target_column.sql",
+    "db:migrate:divisions": "wrangler d1 execute workhoyspace_db --remote --file=./migrations/0002_divisions.sql"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"
