@@ -24,3 +24,14 @@
 @media(max-width:560px){.workspace-root{width:92%;margin-top:15px}.ws-sidebar{padding:13px}.ws-nav{grid-template-columns:repeat(2,1fr)}.ws-panel{padding:14px}.ws-form{grid-template-columns:1fr}.ws-field.full{grid-column:auto}.ws-top{align-items:flex-start;flex-direction:column}.ws-stats{gap:8px}.ws-stat{padding:12px}.ws-stat b{font-size:21px}.ws-table{display:block;overflow:auto;white-space:nowrap}}
 
 .ws-panel-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px}.ws-panel-heading h2{margin-bottom:6px}.ws-section-gap{margin-top:15px}.ws-member-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.ws-inline-select{min-width:160px;padding:9px 10px;border:1px solid #39384b;border-radius:7px;background:#0e0e17;color:#f1f1f7;font:11px var(--font)}.ws-log-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 12px;border:1px solid #29283a;border-radius:8px;background:#11111a}.ws-log-row b{display:block;font-size:11px;text-transform:capitalize;color:#dedced}.ws-log-row small{display:block;margin-top:5px;color:#9999ad;font-size:9px}.ws-report-actions{margin-top:14px;align-items:center}.division-edit-form .ws-form{margin-top:12px}.ws-task .ws-form input{min-width:0}@media(max-width:600px){.ws-panel-heading{flex-direction:column}.ws-member-tools{align-items:stretch}.ws-inline-select{flex:1;min-width:120px}}
+
+/* Division-based tables */
+.login-modal select{display:block;width:100%;margin-top:8px;padding:13px 12px;border-radius:7px;border:1px solid #39384b;background:#0e0e17;color:white;outline:none;font:12px var(--font)}
+.login-modal select:focus{border-color:#8580b7}
+.ws-table-wrap{width:100%;overflow-x:auto;border:1px solid #29283a;border-radius:9px}
+.ws-division-table{min-width:650px}
+.ws-division-table td{vertical-align:middle}
+.ws-table-sub{display:block;color:#8e8da3;font-size:9px;margin-top:4px}
+.ws-assignment-detail td{padding:12px;background:#0d0d16}
+.ws-assignment-detail[hidden]{display:none}
+.ws-division-table-panel .ws-panel-heading{margin-bottom:10px}
