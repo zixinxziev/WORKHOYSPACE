@@ -139,8 +139,7 @@ async function handleApi(request, env, url) {
       return json({ error: "USERNAME_ALREADY_EXISTS" }, 409);
     }
     await logActivity(env, userId, "member_registered", "user", userId);
-    const sheetsTest = await syncGoogleSheets(env, "member_registered");
-console.log("GOOGLE SHEETS RESULT:", sheetsTest);
+    await syncGoogleSheets(env, "member_registered");
     return createSession(env, userId, { id: userId, username, role: "member" });
   }
   if (path === "/api/auth/login" && method === "POST") {
