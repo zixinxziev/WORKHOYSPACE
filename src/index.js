@@ -1,3 +1,5 @@
+import { pbkdf2, timingSafeEqual } from "node:crypto";
+
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 const now = () => new Date().toISOString();
@@ -21,17 +23,34 @@ function randomToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return [...bytes].map(x => x.toString(16).padStart(2, "0")).join("");
 }
+// Keep the existing salt:hash storage format so accounts created before this
+// fix remain compatible. Node.js crypto PBKDF2 is used because Workers'
+ // Web Crypto implementation rejects iteration counts above 100,000.
+const PASSWORD_HASH_ITERATIONS = 210000;
+
+function derivePasswordHash(password, salt, iterations = PASSWORD_HASH_ITERATIONS) {
+  return new Promise((resolve, reject) => {
+    pbkdf2(String(password), String(salt), iterations, 32, "sha256", (error, derivedKey) => {
+      if (error) return reject(error);
+      resolve(derivedKey.toString("hex"));
+    });
+  });
+}
+
 async function passwordHash(password, salt = crypto.randomUUID()) {
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: new TextEncoder().encode(salt), iterations: 210000, hash: "SHA-256" }, key, 256);
-  const hash = [...new Uint8Array(bits)].map(x => x.toString(16).padStart(2, "0")).join("");
+  const hash = await derivePasswordHash(password, salt);
   return `${salt}:${hash}`;
 }
+
 async function verifyPassword(password, stored) {
   const [salt, expected] = String(stored || "").split(":");
-  if (!salt || !expected) return false;
-  const actual = await passwordHash(password, salt);
-  return actual.split(":")[1] === expected;
+  if (!salt || !/^[a-f0-9]{64}$/i.test(expected || "")) return false;
+
+  const actual = await derivePasswordHash(password, salt);
+  const actualBytes = new TextEncoder().encode(actual);
+  const expectedBytes = new TextEncoder().encode(expected.toLowerCase());
+
+  return timingSafeEqual(actualBytes, expectedBytes);
 }
 async function currentUser(request, env) {
   const token = bearer(request);
