@@ -578,7 +578,7 @@ export default {
       if (url.pathname.startsWith("/api/")) return await handleApi(request, env, url, ctx);
       return env.ASSETS.fetch(request);
     } catch (error) {
-      console.error("Workspace request failed:", error);
+      console.error("Workspace request failed:", error?.name, error?.message, error?.stack);
       return json({ error: "INTERNAL_ERROR" }, 500);
     }
   }
