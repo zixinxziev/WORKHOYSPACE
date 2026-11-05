@@ -1,4 +1,3 @@
-
 name = "workhoyspace"
 main = "src/index.js"
 compatibility_date = "2026-11-03"
@@ -14,17 +13,6 @@ binding = "DB"
 database_name = "workhoyspace_db"
 database_id = "8dd054fa-8d44-4257-8c55-2a5df4712953"
 
-[[kv_namespaces]]
-binding = "PROOFS"
-id = "8e1aa8e9c83746d8ab1d6cdd308fd6ec"
-
 [vars]
 APP_NAME = "Ahoy's Workspace"
-GOOGLE_SHEETS_WEBHOOK = "https://script.google.com/macros/s/AKfycbyJkzJgUTCwQ3npHXoLZFNT9q7URcAjWlUO_eCWJM6MStSCeFAD8HxQ0DkSPJ9B4Tvd/exec"
-
-[observability]
-enabled = true
-
-[observability.logs]
-enabled = true
-invocation_logs = true
+GOOGLE_SHEETS_WEBHOOK = "https://script.google.com/macros/s/AKfycbw_btxYdJQtfcQM6f30CVDewoMuO98kXdIGnk70GHat2zR2w1wQwEr94Prv4Z0Zi9J8/exec"
