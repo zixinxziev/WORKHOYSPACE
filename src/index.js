@@ -71,8 +71,9 @@ async function currentUser(request, env) {
   if (!token) return null;
   const tokenHash = await sha256(token);
   const row = await env.DB.prepare(`
-    SELECT u.id, u.username, u.role, u.status
+    SELECT u.id, u.username, u.role, u.status, u.division_id, d.name AS division_name
     FROM sessions s JOIN users u ON u.id = s.user_id
+    LEFT JOIN divisions d ON d.id = u.division_id
     WHERE s.token_hash = ? AND s.expires_at > ? AND u.status = 'active'
   `).bind(tokenHash, now()).first();
   return row || null;
@@ -135,6 +136,10 @@ async function handleApi(request, env, url) {
   if (path === "/api/health" && method === "GET") {
     return json({ ok: true, app: env.APP_NAME || "Ahoy's Workspace" });
   }
+  if (path === "/api/divisions/available" && method === "GET") {
+    const { results } = await env.DB.prepare("SELECT id, name, description FROM divisions WHERE status='active' ORDER BY name").all();
+    return json(results || []);
+  }
   if (path === "/api/setup/status" && method === "GET") {
     return json(await setupStatus(env));
   }
@@ -156,7 +161,6 @@ async function handleApi(request, env, url) {
       return json({ error: "ACCOUNT_CREATE_FAILED" }, 400);
     }
     await logActivity(env, userId, "first_pengawas_created", "user", userId);
-    await syncGoogleSheets(env, "first_pengawas_created");
     return createSession(env, userId, { id: userId, username, role: "pengawas" });
   }
   if (path === "/api/auth/register" && method === "POST") {
@@ -164,18 +168,30 @@ async function handleApi(request, env, url) {
     const body = await request.json().catch(() => ({}));
     const username = cleanUsername(body.username);
     const password = String(body.password || "");
+    const divisionId = String(body.divisionId || "");
     if (!validUsername(username)) return json({ error: "USERNAME_FORMAT_INVALID" }, 400);
     if (password.length < 8) return json({ error: "PASSWORD_TOO_SHORT" }, 400);
+    if (!divisionId) return json({ error: "DIVISION_REQUIRED" }, 400);
+    const division = await env.DB.prepare("SELECT id, name FROM divisions WHERE id=? AND status='active'").bind(divisionId).first();
+    if (!division) return json({ error: "ACTIVE_DIVISION_NOT_FOUND" }, 400);
     const userId = id();
     try {
-      await env.DB.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, 'member')")
-        .bind(userId, username, await passwordHash(password, env)).run();
-    } catch {
-      return json({ error: "USERNAME_ALREADY_EXISTS" }, 409);
+      await env.DB.prepare("INSERT INTO users (id, username, password_hash, role, division_id) VALUES (?, ?, ?, 'member', ?)")
+        .bind(userId, username, await passwordHash(password, env), divisionId).run();
+    } catch (error) {
+      const exists = await env.DB.prepare("SELECT id FROM users WHERE username=? COLLATE NOCASE").bind(username).first();
+      if (exists) return json({ error: "USERNAME_ALREADY_EXISTS" }, 409);
+      console.error("Member registration failed:", error);
+      return json({ error: "ACCOUNT_CREATE_FAILED" }, 400);
     }
-    await logActivity(env, userId, "member_registered", "user", userId);
-    await syncGoogleSheets(env, "member_registered");
-    return createSession(env, userId, { id: userId, username, role: "member" });
+    // Give a new member every existing task currently assigned to their chosen division.
+    const existingTasks = await env.DB.prepare("SELECT id FROM tasks WHERE division_id=? ORDER BY created_at ASC").bind(divisionId).all();
+    for (const task of (existingTasks.results || [])) {
+      await env.DB.prepare("INSERT OR IGNORE INTO task_assignments (id, task_id, member_id) VALUES (?, ?, ?)")
+        .bind(id(), task.id, userId).run();
+    }
+    await logActivity(env, userId, "member_registered", "user", userId, { divisionId, division: division.name });
+    return createSession(env, userId, { id: userId, username, role: "member", division_id: divisionId });
   }
   if (path === "/api/auth/challenge" && method === "POST") {
     const body = await request.json().catch(() => ({}));
@@ -266,7 +282,6 @@ async function handleApi(request, env, url) {
     try { await env.DB.prepare("INSERT INTO divisions (id, name, description) VALUES (?, ?, ?)").bind(divisionId, name, description).run(); }
     catch { return json({ error: "DIVISION_NAME_ALREADY_EXISTS" }, 409); }
     await logActivity(env, user.id, "division_created", "division", divisionId, { name });
-    await syncGoogleSheets(env, "division_created");
     return json({ ok: true, divisionId }, 201);
   }
 
@@ -283,7 +298,6 @@ async function handleApi(request, env, url) {
     try { await env.DB.prepare("UPDATE divisions SET name=?, description=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name, description, status, division.id).run(); }
     catch { return json({ error: "DIVISION_NAME_ALREADY_EXISTS" }, 409); }
     await logActivity(env, user.id, "division_updated", "division", division.id, { name, status });
-    await syncGoogleSheets(env, "division_updated");
     return json({ ok: true });
   }
 
@@ -299,8 +313,14 @@ async function handleApi(request, env, url) {
       if (!division) return json({ error: "ACTIVE_DIVISION_NOT_FOUND" }, 404);
     }
     await env.DB.prepare("UPDATE users SET division_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(divisionId, target.id).run();
+    if (divisionId && target.role === "member") {
+      const existingTasks = await env.DB.prepare("SELECT id FROM tasks WHERE division_id=?").bind(divisionId).all();
+      for (const task of (existingTasks.results || [])) {
+        await env.DB.prepare("INSERT OR IGNORE INTO task_assignments (id, task_id, member_id) VALUES (?, ?, ?)")
+          .bind(id(), task.id, target.id).run();
+      }
+    }
     await logActivity(env, user.id, "member_division_changed", "user", target.id, { divisionId });
-    await syncGoogleSheets(env, "member_division_changed");
     return json({ ok: true });
   }
 
@@ -313,7 +333,6 @@ async function handleApi(request, env, url) {
     if (!assignment) return json({ error: "NOT_FOUND" }, 404);
     await env.DB.prepare(`UPDATE task_assignments SET status='not_started', member_note=NULL, reviewer_note=NULL, submitted_at=NULL, reviewed_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(assignmentId).run();
     await logActivity(env, user.id, "assignment_progress_reset", "assignment", assignmentId, { previousStatus: assignment.status, proofsPreserved: true });
-    await syncGoogleSheets(env, "assignment_progress_reset");
     return json({ ok: true, proofsPreserved: true });
   }
 
@@ -326,38 +345,40 @@ async function handleApi(request, env, url) {
     await env.DB.prepare("DELETE FROM activity_logs").run();
     // Keep one audit marker so staff can see who cleared the activity log and when.
     await logActivity(env, user.id, "activity_history_reset", "activity_logs", null, { deletedCount });
-    await syncGoogleSheets(env, "activity_history_reset");
     return json({ ok: true, deletedCount, auditRecordKept: true });
   }
 
   if (path === "/api/admin/reports/sync" && method === "POST") {
     if (!requireStaff(user)) return json({ error: "FORBIDDEN" }, 403);
-    if (!env.GOOGLE_SHEETS_WEBHOOK || !env.GOOGLE_SHEETS_SECRET) return json({ error: "GOOGLE_SHEETS_NOT_CONFIGURED" }, 503);
-    await logActivity(env, user.id, "google_sheets_manual_sync", "report", null);
-    const result = await syncGoogleSheets(env, "manual_sync");
-    if (!result.ok) return json({ error: "GOOGLE_SHEETS_SYNC_FAILED" }, 502);
-    return json({ ok: true });
+    return json({ error: "REPORTING_DEFERRED" }, 503);
   }
 
   if (path === "/api/tasks" && method === "GET") {
     let rows;
     if (requireStaff(user)) {
       const result = await env.DB.prepare(`
-        SELECT a.id AS assignment_id, a.status AS assignment_status, a.member_note, a.reviewer_note,
-          a.submitted_at, a.reviewed_at, t.id AS task_id, t.title, t.description, t.target, t.deadline,
-          t.priority, t.created_at, u.username AS member_username
-        FROM task_assignments a JOIN tasks t ON t.id = a.task_id JOIN users u ON u.id = a.member_id
-        ORDER BY t.created_at DESC, u.username ASC
+        SELECT a.id AS assignment_id,
+          CASE WHEN a.id IS NULL THEN 'waiting' ELSE a.status END AS assignment_status,
+          a.member_note, a.reviewer_note, a.submitted_at, a.reviewed_at,
+          t.id AS task_id, t.title, t.description, t.target, t.deadline,
+          t.priority, t.created_at, t.division_id, d.name AS division_name, u.username AS member_username
+        FROM tasks t
+        LEFT JOIN task_assignments a ON a.task_id = t.id
+        LEFT JOIN users u ON u.id = a.member_id
+        LEFT JOIN divisions d ON d.id=t.division_id
+        ORDER BY COALESCE(d.name, 'Unassigned'), t.created_at DESC, u.username ASC
       `).all();
       rows = result.results || [];
     } else {
       const result = await env.DB.prepare(`
         SELECT a.id AS assignment_id, a.status AS assignment_status, a.member_note, a.reviewer_note,
           a.submitted_at, a.reviewed_at, t.id AS task_id, t.title, t.description, t.target, t.deadline,
-          t.priority, t.created_at
+          t.priority, t.created_at, t.division_id, d.name AS division_name
         FROM task_assignments a JOIN tasks t ON t.id = a.task_id
-        WHERE a.member_id = ? ORDER BY t.created_at DESC
-      `).bind(user.id).all();
+        LEFT JOIN divisions d ON d.id=t.division_id
+        WHERE a.member_id = ? AND (t.division_id = ? OR t.division_id IS NULL)
+        ORDER BY t.created_at DESC
+      `).bind(user.id, user.division_id || "").all();
       rows = result.results || [];
     }
     return json(rows);
@@ -366,39 +387,28 @@ async function handleApi(request, env, url) {
   if (path === "/api/tasks" && method === "POST") {
     if (!requireStaff(user)) return json({ error: "FORBIDDEN" }, 403);
     const body = await request.json().catch(() => ({}));
-    const title = String(body.title || "").trim();
+    const title = String(body.title || "").trim().slice(0, 140);
     const target = String(body.target || "").trim();
-    const description = String(body.description || "").trim();
+    const description = String(body.description || "").trim().slice(0, 3000);
     const deadline = body.deadline ? String(body.deadline) : null;
     const priority = ["low", "medium", "high"].includes(body.priority) ? body.priority : "medium";
-    if (!title || !target) return json({ error: "TITLE_AND_TARGET_REQUIRED" }, 400);
-
-    let members = [];
-    if (target.toLowerCase() === "all") {
-      const result = await env.DB.prepare("SELECT id FROM users WHERE role = 'member' AND status = 'active'").all();
-      members = result.results || [];
-    } else {
-      const names = [...new Set(target.split(",").map(cleanUsername).filter(Boolean))];
-      if (!names.length) return json({ error: "TARGET_REQUIRED" }, 400);
-      for (const name of names) {
-        const member = await env.DB.prepare("SELECT id, username FROM users WHERE username = ? COLLATE NOCASE AND status = 'active'")
-          .bind(name).first();
-        if (!member) return json({ error: "TARGET_USER_NOT_FOUND", username: name }, 404);
-        if (member.role === "pengawas") return json({ error: "CANNOT_ASSIGN_TO_PENGAWAS" }, 400);
-        members.push(member);
-      }
-    }
-    if (!members.length) return json({ error: "NO_TARGET_MEMBERS" }, 400);
+    const divisionId = String(body.divisionId || "");
+    if (!title) return json({ error: "TASK_TITLE_REQUIRED" }, 400);
+    if (!divisionId) return json({ error: "DIVISION_REQUIRED" }, 400);
+    const division = await env.DB.prepare("SELECT id, name FROM divisions WHERE id=? AND status='active'").bind(divisionId).first();
+    if (!division) return json({ error: "ACTIVE_DIVISION_NOT_FOUND" }, 404);
+    const result = await env.DB.prepare("SELECT id FROM users WHERE role='member' AND status='active' AND division_id=?")
+      .bind(divisionId).all();
+    const members = result.results || [];
     const taskId = id();
-    await env.DB.prepare("INSERT INTO tasks (id, title, description, target, deadline, priority, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)")
-      .bind(taskId, title, description, target, deadline, priority, user.id).run();
+    await env.DB.prepare("INSERT INTO tasks (id, title, description, target, deadline, priority, created_by, division_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(taskId, title, description, target || division.name, deadline, priority, user.id, divisionId).run();
     for (const member of members) {
-      await env.DB.prepare("INSERT INTO task_assignments (id, task_id, member_id) VALUES (?, ?, ?)")
+      await env.DB.prepare("INSERT OR IGNORE INTO task_assignments (id, task_id, member_id) VALUES (?, ?, ?)")
         .bind(id(), taskId, member.id).run();
     }
-    await logActivity(env, user.id, "task_created", "task", taskId, { title, target, assignments: members.length });
-    await syncGoogleSheets(env, "task_created");
-    return json({ ok: true, taskId, assigned: members.length }, 201);
+    await logActivity(env, user.id, "task_created", "task", taskId, { title, divisionId, division: division.name, assignments: members.length });
+    return json({ ok: true, taskId, assigned: members.length, division: division.name }, 201);
   }
 
   const assignmentStatus = path.match(/^\/api\/assignments\/([^/]+)\/status$/);
@@ -412,7 +422,6 @@ async function handleApi(request, env, url) {
     await env.DB.prepare("UPDATE task_assignments SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
       .bind(assignmentId).run();
     await logActivity(env, user.id, "task_started", "assignment", assignmentId);
-    await syncGoogleSheets(env, "task_started");
     return json({ ok: true });
   }
 
@@ -442,7 +451,6 @@ async function handleApi(request, env, url) {
     await env.DB.prepare(`UPDATE task_assignments SET status = 'submitted', member_note = ?, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .bind(note, assignmentId).run();
     await logActivity(env, user.id, "proof_submitted", "assignment", assignmentId, { proofId, filename: file.name });
-    await syncGoogleSheets(env, "proof_submitted");
     return json({ ok: true, proofId }, 201);
   }
 
@@ -493,7 +501,6 @@ async function handleApi(request, env, url) {
     await env.DB.prepare(`UPDATE task_assignments SET status = ?, reviewer_note = ?, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .bind(status, note, assignmentId).run();
     await logActivity(env, user.id, status === "completed" ? "task_approved" : "revision_requested", "assignment", assignmentId, { note });
-    await syncGoogleSheets(env, status === "completed" ? "task_approved" : "revision_requested");
     return json({ ok: true });
   }
 
@@ -508,7 +515,6 @@ async function handleApi(request, env, url) {
     if (target.role === "pengawas") return json({ error: "PENGAWAS_PROTECTED" }, 403);
     await env.DB.prepare("UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(role, target.id).run();
     await logActivity(env, user.id, "user_role_changed", "user", target.id, { role });
-    await syncGoogleSheets(env, "user_role_changed");
     return json({ ok: true });
   }
 
@@ -534,7 +540,9 @@ async function createSession(env, userId, user) {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   await env.DB.prepare("INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)")
     .bind(id(), userId, await sha256(token), expiresAt).run();
-  return json({ ok: true, token, user: { id: user.id, username: user.username, role: user.role }, expiresAt });
+  const freshUser = await env.DB.prepare(`SELECT u.id, u.username, u.role, u.division_id, d.name AS division_name
+    FROM users u LEFT JOIN divisions d ON d.id=u.division_id WHERE u.id=?`).bind(userId).first();
+  return json({ ok: true, token, user: freshUser || { id: user.id, username: user.username, role: user.role }, expiresAt });
 }
 
 export default {
