@@ -118,18 +118,29 @@ async function syncGoogleSheets(env, reason = "data_updated") {
     });
     if (!response.ok) return { configured: true, ok: false, status: response.status };
     const result = await response.json().catch(() => ({}));
-    return { configured: true, ok: result.ok === true };
+    return { configured: true, ok: result.ok === true, status: response.status, updated: result.updated || null, error: result.error || null };
   } catch (error) {
     console.error("Google Sheets sync failed:", error);
-    return { configured: true, ok: false };
+    return { configured: true, ok: false, error: String(error && error.message || error).slice(0, 300) };
   }
+}
+
+function triggerGoogleSheetsSync(ctx, env, reason) {
+  if (!env.GOOGLE_SHEETS_WEBHOOK || !env.GOOGLE_SHEETS_SECRET) return;
+  const task = syncGoogleSheets(env, reason).then(result => {
+    if (!result.ok) console.error("Google Sheets sync did not complete:", reason, result);
+  }).catch(error => {
+    console.error("Google Sheets background sync failed:", reason, error);
+  });
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(task);
+  else task.catch(() => {});
 }
 
 async function setupStatus(env) {
   const row = await env.DB.prepare("SELECT COUNT(*) AS total FROM users").first();
   return { setupRequired: Number(row?.total || 0) === 0 };
 }
-async function handleApi(request, env, url) {
+async function handleApi(request, env, url, ctx) {
   const path = url.pathname;
   const method = request.method;
 
@@ -161,6 +172,7 @@ async function handleApi(request, env, url) {
       return json({ error: "ACCOUNT_CREATE_FAILED" }, 400);
     }
     await logActivity(env, userId, "first_pengawas_created", "user", userId);
+    triggerGoogleSheetsSync(ctx, env, "first_pengawas_created");
     return createSession(env, userId, { id: userId, username, role: "pengawas" });
   }
   if (path === "/api/auth/register" && method === "POST") {
@@ -191,6 +203,7 @@ async function handleApi(request, env, url) {
         .bind(id(), task.id, userId).run();
     }
     await logActivity(env, userId, "member_registered", "user", userId, { divisionId, division: division.name });
+    triggerGoogleSheetsSync(ctx, env, "member_registered");
     return createSession(env, userId, { id: userId, username, role: "member", division_id: divisionId });
   }
   if (path === "/api/auth/challenge" && method === "POST") {
@@ -282,6 +295,7 @@ async function handleApi(request, env, url) {
     try { await env.DB.prepare("INSERT INTO divisions (id, name, description) VALUES (?, ?, ?)").bind(divisionId, name, description).run(); }
     catch { return json({ error: "DIVISION_NAME_ALREADY_EXISTS" }, 409); }
     await logActivity(env, user.id, "division_created", "division", divisionId, { name });
+    triggerGoogleSheetsSync(ctx, env, "division_created");
     return json({ ok: true, divisionId }, 201);
   }
 
@@ -298,6 +312,7 @@ async function handleApi(request, env, url) {
     try { await env.DB.prepare("UPDATE divisions SET name=?, description=?, status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name, description, status, division.id).run(); }
     catch { return json({ error: "DIVISION_NAME_ALREADY_EXISTS" }, 409); }
     await logActivity(env, user.id, "division_updated", "division", division.id, { name, status });
+    triggerGoogleSheetsSync(ctx, env, "division_updated");
     return json({ ok: true });
   }
 
@@ -321,6 +336,7 @@ async function handleApi(request, env, url) {
       }
     }
     await logActivity(env, user.id, "member_division_changed", "user", target.id, { divisionId });
+    triggerGoogleSheetsSync(ctx, env, "member_division_changed");
     return json({ ok: true });
   }
 
@@ -333,6 +349,7 @@ async function handleApi(request, env, url) {
     if (!assignment) return json({ error: "NOT_FOUND" }, 404);
     await env.DB.prepare(`UPDATE task_assignments SET status='not_started', member_note=NULL, reviewer_note=NULL, submitted_at=NULL, reviewed_at=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?`).bind(assignmentId).run();
     await logActivity(env, user.id, "assignment_progress_reset", "assignment", assignmentId, { previousStatus: assignment.status, proofsPreserved: true });
+    triggerGoogleSheetsSync(ctx, env, "assignment_progress_reset");
     return json({ ok: true, proofsPreserved: true });
   }
 
@@ -345,12 +362,16 @@ async function handleApi(request, env, url) {
     await env.DB.prepare("DELETE FROM activity_logs").run();
     // Keep one audit marker so staff can see who cleared the activity log and when.
     await logActivity(env, user.id, "activity_history_reset", "activity_logs", null, { deletedCount });
+    triggerGoogleSheetsSync(ctx, env, "activity_history_reset");
     return json({ ok: true, deletedCount, auditRecordKept: true });
   }
 
   if (path === "/api/admin/reports/sync" && method === "POST") {
     if (!requireStaff(user)) return json({ error: "FORBIDDEN" }, 403);
-    return json({ error: "REPORTING_DEFERRED" }, 503);
+    const result = await syncGoogleSheets(env, "manual_sync");
+    if (!result.configured) return json({ ok: false, error: "GOOGLE_SHEETS_NOT_CONFIGURED" }, 503);
+    if (!result.ok) return json({ ok: false, error: "GOOGLE_SHEETS_SYNC_FAILED", details: result }, 502);
+    return json({ ok: true, message: "GOOGLE_SHEETS_SYNCED", result });
   }
 
   if (path === "/api/tasks" && method === "GET") {
@@ -408,6 +429,7 @@ async function handleApi(request, env, url) {
         .bind(id(), taskId, member.id).run();
     }
     await logActivity(env, user.id, "task_created", "task", taskId, { title, divisionId, division: division.name, assignments: members.length });
+    triggerGoogleSheetsSync(ctx, env, "task_created");
     return json({ ok: true, taskId, assigned: members.length, division: division.name }, 201);
   }
 
@@ -422,6 +444,7 @@ async function handleApi(request, env, url) {
     await env.DB.prepare("UPDATE task_assignments SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE id = ?")
       .bind(assignmentId).run();
     await logActivity(env, user.id, "task_started", "assignment", assignmentId);
+    triggerGoogleSheetsSync(ctx, env, "task_started");
     return json({ ok: true });
   }
 
@@ -451,6 +474,7 @@ async function handleApi(request, env, url) {
     await env.DB.prepare(`UPDATE task_assignments SET status = 'submitted', member_note = ?, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .bind(note, assignmentId).run();
     await logActivity(env, user.id, "proof_submitted", "assignment", assignmentId, { proofId, filename: file.name });
+    triggerGoogleSheetsSync(ctx, env, "proof_submitted");
     return json({ ok: true, proofId }, 201);
   }
 
@@ -501,6 +525,7 @@ async function handleApi(request, env, url) {
     await env.DB.prepare(`UPDATE task_assignments SET status = ?, reviewer_note = ?, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .bind(status, note, assignmentId).run();
     await logActivity(env, user.id, status === "completed" ? "task_approved" : "revision_requested", "assignment", assignmentId, { note });
+    triggerGoogleSheetsSync(ctx, env, status === "completed" ? "task_approved" : "revision_requested");
     return json({ ok: true });
   }
 
@@ -515,6 +540,7 @@ async function handleApi(request, env, url) {
     if (target.role === "pengawas") return json({ error: "PENGAWAS_PROTECTED" }, 403);
     await env.DB.prepare("UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(role, target.id).run();
     await logActivity(env, user.id, "user_role_changed", "user", target.id, { role });
+    triggerGoogleSheetsSync(ctx, env, "user_role_changed");
     return json({ ok: true });
   }
 
@@ -546,10 +572,10 @@ async function createSession(env, userId, user) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     try {
-      if (url.pathname.startsWith("/api/")) return await handleApi(request, env, url);
+      if (url.pathname.startsWith("/api/")) return await handleApi(request, env, url, ctx);
       return env.ASSETS.fetch(request);
     } catch (error) {
       console.error("Workspace request failed:", error);
