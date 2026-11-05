@@ -1,5 +1,15 @@
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS divisions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),
+  division_id TEXT REFERENCES divisions(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -66,6 +76,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS idx_users_division ON users(division_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_member_status ON task_assignments(member_id, status);
 CREATE INDEX IF NOT EXISTS idx_assignments_task ON task_assignments(task_id);
 CREATE INDEX IF NOT EXISTS idx_logs_created ON activity_logs(created_at DESC);
