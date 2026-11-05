@@ -1,5 +1,3 @@
-import { pbkdf2, timingSafeEqual } from "node:crypto";
-
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
 const now = () => new Date().toISOString();
@@ -23,35 +21,51 @@ function randomToken() {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return [...bytes].map(x => x.toString(16).padStart(2, "0")).join("");
 }
-// Keep the existing salt:hash storage format so accounts created before this
-// fix remain compatible. Node.js crypto PBKDF2 is used because Workers'
- // Web Crypto implementation rejects iteration counts above 100,000.
-const PASSWORD_HASH_ITERATIONS = 210000;
+// New passwords use the Worker-supported PBKDF2 limit. Existing legacy hashes
+// (salt:hash) are verified in the browser through a one-time challenge.
+const PASSWORD_HASH_ITERATIONS = 100000;
 
-function derivePasswordHash(password, salt, iterations = PASSWORD_HASH_ITERATIONS) {
-  return new Promise((resolve, reject) => {
-    pbkdf2(String(password), String(salt), iterations, 32, "sha256", (error, derivedKey) => {
-      if (error) return reject(error);
-      resolve(derivedKey.toString("hex"));
-    });
-  });
+function bytesToHex(bytes) {
+  return [...new Uint8Array(bytes)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+function hexToBytes(hex) {
+  if (!/^(?:[a-f0-9]{2})+$/i.test(String(hex || ""))) return null;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+function safeEqualHex(a, b) {
+  const aa = hexToBytes(a), bb = hexToBytes(b);
+  if (!aa || !bb || aa.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < aa.length; i++) diff |= aa[i] ^ bb[i];
+  return diff === 0;
+}
+async function hmacTextHex(secret, message) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(secret)), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return bytesToHex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message)));
+}
+async function passwordHash(password, env, salt = crypto.randomUUID()) {
+  if (!env.PASSWORD_PEPPER) throw new Error("PASSWORD_PEPPER_NOT_CONFIGURED");
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(password)), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: new TextEncoder().encode(salt), iterations: PASSWORD_HASH_ITERATIONS, hash: "SHA-256" }, key, 256);
+  const derivedHash = bytesToHex(bits);
+  const verifier = await hmacTextHex(env.PASSWORD_PEPPER, `${salt}:${derivedHash}`);
+  return `v2:${PASSWORD_HASH_ITERATIONS}:${salt}:${verifier}`;
+}
+function parsePasswordHash(stored) {
+  const parts = String(stored || "").split(":");
+  if (parts.length === 4 && parts[0] === "v2") {
+    const iterations = Number(parts[1]);
+    if (!Number.isInteger(iterations) || iterations < 1 || iterations > 100000 || !parts[2] || !/^[a-f0-9]{64}$/i.test(parts[3])) return null;
+    return { salt: parts[2], hash: parts[3].toLowerCase(), iterations, legacy: false };
+  }
+  if (parts.length === 2 && parts[0] && /^[a-f0-9]{64}$/i.test(parts[1])) {
+    return { salt: parts[0], hash: parts[1].toLowerCase(), iterations: 210000, legacy: true };
+  }
+  return null;
 }
 
-async function passwordHash(password, salt = crypto.randomUUID()) {
-  const hash = await derivePasswordHash(password, salt);
-  return `${salt}:${hash}`;
-}
-
-async function verifyPassword(password, stored) {
-  const [salt, expected] = String(stored || "").split(":");
-  if (!salt || !/^[a-f0-9]{64}$/i.test(expected || "")) return false;
-
-  const actual = await derivePasswordHash(password, salt);
-  const actualBytes = new TextEncoder().encode(actual);
-  const expectedBytes = new TextEncoder().encode(expected.toLowerCase());
-
-  return timingSafeEqual(actualBytes, expectedBytes);
-}
 async function currentUser(request, env) {
   const token = bearer(request);
   if (!token) return null;
@@ -125,6 +139,7 @@ async function handleApi(request, env, url) {
     return json(await setupStatus(env));
   }
   if (path === "/api/setup/first-pengawas" && method === "POST") {
+    if (!env.PASSWORD_PEPPER) return json({ error: "PASSWORD_PEPPER_NOT_CONFIGURED" }, 503);
     if (!env.SETUP_SECRET) return json({ error: "SETUP_SECRET_NOT_CONFIGURED" }, 503);
     const body = await request.json().catch(() => ({}));
     if (!body.setupSecret || body.setupSecret !== env.SETUP_SECRET) return json({ error: "INVALID_SETUP_SECRET" }, 403);
@@ -136,7 +151,7 @@ async function handleApi(request, env, url) {
     const userId = id();
     try {
       await env.DB.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, 'pengawas')")
-        .bind(userId, username, await passwordHash(password)).run();
+        .bind(userId, username, await passwordHash(password, env)).run();
     } catch {
       return json({ error: "ACCOUNT_CREATE_FAILED" }, 400);
     }
@@ -145,6 +160,7 @@ async function handleApi(request, env, url) {
     return createSession(env, userId, { id: userId, username, role: "pengawas" });
   }
   if (path === "/api/auth/register" && method === "POST") {
+    if (!env.PASSWORD_PEPPER) return json({ error: "PASSWORD_PEPPER_NOT_CONFIGURED" }, 503);
     const body = await request.json().catch(() => ({}));
     const username = cleanUsername(body.username);
     const password = String(body.password || "");
@@ -153,7 +169,7 @@ async function handleApi(request, env, url) {
     const userId = id();
     try {
       await env.DB.prepare("INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, 'member')")
-        .bind(userId, username, await passwordHash(password)).run();
+        .bind(userId, username, await passwordHash(password, env)).run();
     } catch {
       return json({ error: "USERNAME_ALREADY_EXISTS" }, 409);
     }
@@ -161,13 +177,55 @@ async function handleApi(request, env, url) {
     await syncGoogleSheets(env, "member_registered");
     return createSession(env, userId, { id: userId, username, role: "member" });
   }
+  if (path === "/api/auth/challenge" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const username = cleanUsername(body.username);
+    const row = await env.DB.prepare("SELECT id, password_hash, status FROM users WHERE username = ? COLLATE NOCASE")
+      .bind(username).first();
+    const parsed = row && row.status === "active" ? parsePasswordHash(row.password_hash) : null;
+    if (!parsed) return json({ error: "INVALID_CREDENTIALS" }, 401);
+    if (!parsed.legacy && !env.PASSWORD_PEPPER) return json({ error: "PASSWORD_PEPPER_NOT_CONFIGURED" }, 503);
+    const challenge = randomToken();
+    const challengeHash = `auth_challenge:${await sha256(challenge)}`;
+    const expiresAt = new Date(Date.now() + 2 * 60 * 1000).toISOString();
+    await env.DB.prepare("DELETE FROM sessions WHERE token_hash LIKE 'auth_challenge:%' AND expires_at <= ?").bind(now()).run();
+    await env.DB.prepare("INSERT INTO sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)")
+      .bind(id(), row.id, challengeHash, expiresAt).run();
+    return json({ challenge, salt: parsed.salt, iterations: parsed.iterations, upgrade: parsed.legacy });
+  }
   if (path === "/api/auth/login" && method === "POST") {
     const body = await request.json().catch(() => ({}));
     const username = cleanUsername(body.username);
-    const row = await env.DB.prepare("SELECT id, username, password_hash, role, status FROM users WHERE username = ? COLLATE NOCASE")
-      .bind(username).first();
-    if (!row || row.status !== "active" || !(await verifyPassword(String(body.password || ""), row.password_hash))) {
+    const challenge = String(body.challenge || "");
+    const derivedHash = String(body.derivedHash || "").toLowerCase();
+    if (!/^[a-f0-9]{64}$/i.test(challenge) || !/^[a-f0-9]{64}$/.test(derivedHash)) {
       return json({ error: "INVALID_CREDENTIALS" }, 401);
+    }
+    const challengeHash = `auth_challenge:${await sha256(challenge)}`;
+    const challengeRow = await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ? AND expires_at > ? RETURNING user_id")
+      .bind(challengeHash, now()).first();
+    if (!challengeRow) return json({ error: "INVALID_CREDENTIALS" }, 401);
+    const row = await env.DB.prepare("SELECT id, username, password_hash, role, status FROM users WHERE id = ? AND username = ? COLLATE NOCASE")
+      .bind(challengeRow.user_id, username).first();
+    const parsed = row && row.status === "active" ? parsePasswordHash(row.password_hash) : null;
+    if (!parsed) return json({ error: "INVALID_CREDENTIALS" }, 401);
+    let valid = false;
+    if (parsed.legacy) valid = safeEqualHex(derivedHash, parsed.hash);
+    else if (env.PASSWORD_PEPPER) valid = safeEqualHex(await hmacTextHex(env.PASSWORD_PEPPER, `${parsed.salt}:${derivedHash}`), parsed.hash);
+    if (!valid) return json({ error: "INVALID_CREDENTIALS" }, 401);
+
+    // Upgrade legacy hashes to a peppered verifier after successful authentication.
+    if (parsed.legacy && body.upgrade && typeof body.upgrade === "object" && env.PASSWORD_PEPPER) {
+      const upgrade = body.upgrade;
+      const salt = String(upgrade.salt || "");
+      const newDerivedHash = String(upgrade.derivedHash || "").toLowerCase();
+      if (salt.length >= 8 && salt.length <= 128 && /^[a-f0-9]{64}$/.test(newDerivedHash)) {
+        try {
+          const verifier = await hmacTextHex(env.PASSWORD_PEPPER, `${salt}:${newDerivedHash}`);
+          await env.DB.prepare("UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(`v2:${PASSWORD_HASH_ITERATIONS}:${salt}:${verifier}`, row.id).run();
+        } catch (error) { console.error("Password hash upgrade failed:", error); }
+      }
     }
     return createSession(env, row.id, row);
   }
