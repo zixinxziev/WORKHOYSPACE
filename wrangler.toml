@@ -22,8 +22,8 @@ id = "8e1aa8e9c83746d8ab1d6cdd308fd6ec"
 APP_NAME = "Ahoy's Workspace"
 
 [observability]
-enabled = false
+enabled = true
 
 [observability.logs]
-enabled = false
+enabled = true
 invocation_logs = true
