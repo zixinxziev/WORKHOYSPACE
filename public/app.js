@@ -69,21 +69,53 @@ async function api(path, options={}) {
 function humanError(error) {
   const map = {INVALID_CREDENTIALS:"Username atau password salah.",USERNAME_ALREADY_EXISTS:"Username sudah digunakan.",
     USERNAME_FORMAT_INVALID:"Username 3–24 karakter, hanya huruf kecil, angka, dan underscore.",
-    PASSWORD_TOO_SHORT:"Password minimal 8 karakter.",INVALID_SETUP_SECRET:"Setup secret salah.",
+    PASSWORD_TOO_SHORT:"Password minimal 8 karakter.",PASSWORD_PEPPER_NOT_CONFIGURED:"Password security secret belum dipasang di Cloudflare Worker.",INVALID_SETUP_SECRET:"Setup secret salah.",
     SETUP_SECRET_NOT_CONFIGURED:"SETUP_SECRET belum dipasang di Cloudflare Worker.",
     INITIAL_SETUP_ALREADY_COMPLETED:"Setup Pengawas sudah pernah dilakukan.",
     TARGET_USER_NOT_FOUND:"Username target tidak ditemukan.",FILE_TOO_LARGE_MAX_5MB:"Ukuran file maksimal 5 MB.",
     FILE_TYPE_NOT_ALLOWED:"Format file harus JPG, PNG, WEBP, atau PDF.",DIVISION_NAME_REQUIRED:"Nama divisi wajib diisi.",DIVISION_NAME_ALREADY_EXISTS:"Nama divisi sudah digunakan.",GOOGLE_SHEETS_NOT_CONFIGURED:"Google Sheets belum dikonfigurasi di Cloudflare.",GOOGLE_SHEETS_SYNC_FAILED:"Sinkronisasi Google Sheets gagal.",RESET_CONFIRMATION_REQUIRED:"Konfirmasi reset tidak sesuai.",UNAUTHORIZED:"Sesi berakhir. Silakan login kembali."};
   return map[error.message] || error.message || "Terjadi kesalahan.";
 }
+async function deriveBrowserPasswordHash(password, salt, iterations) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(password)), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt: new TextEncoder().encode(salt), iterations, hash: "SHA-256" }, key, 256);
+  return [...new Uint8Array(bits)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+async function performChallengeLogin(username, password) {
+  const challengeResponse = await fetch(API + "/auth/challenge", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }), cache: "no-store"
+  });
+  const challengeData = await challengeResponse.json().catch(() => ({}));
+  if (!challengeResponse.ok) throw new Error(challengeData.error || `Request failed (${challengeResponse.status})`);
+  const derivedHash = await deriveBrowserPasswordHash(password, challengeData.salt, Number(challengeData.iterations));
+  const body = { username, challenge: challengeData.challenge, derivedHash };
+  if (challengeData.upgrade) {
+    const newSalt = crypto.randomUUID();
+    body.upgrade = { salt: newSalt, derivedHash: await deriveBrowserPasswordHash(password, newSalt, 100000) };
+  }
+  const loginResponse = await fetch(API + "/auth/login", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body), cache: "no-store"
+  });
+  const result = await loginResponse.json().catch(() => ({}));
+  if (!loginResponse.ok) throw new Error(result.error || `Request failed (${loginResponse.status})`);
+  return result;
+}
 form.addEventListener("submit", async e => {
   e.preventDefault(); message.textContent = "Please wait...";
-  const fd = new FormData(form), body = {username:fd.get("username"),password:fd.get("password")};
+  const fd = new FormData(form), username = fd.get("username"), password = fd.get("password");
   let endpoint = "/auth/login";
   if (mode==="register") endpoint="/auth/register";
-  if (mode==="setup") { endpoint="/setup/first-pengawas"; body.setupSecret=fd.get("setupSecret"); }
+  if (mode==="setup") endpoint="/setup/first-pengawas";
   try {
-    const result = await api(endpoint,{method:"POST",body:JSON.stringify(body)});
+    let result;
+    if (mode === "login") result = await performChallengeLogin(username, password);
+    else {
+      const body = { username, password };
+      if (mode === "setup") body.setupSecret = fd.get("setupSecret");
+      result = await api(endpoint,{method:"POST",body:JSON.stringify(body)});
+    }
     localStorage.setItem("ahoyWorkspaceToken",result.token);
     currentUser=result.user; closeModal(); await enterWorkspace();
   } catch(err) { message.textContent=humanError(err); }
