@@ -20,6 +20,9 @@ id = "8e1aa8e9c83746d8ab1d6cdd308fd6ec"
 
 [vars]
 APP_NAME = "Ahoy's Workspace"
+[vars]
+APP_NAME = "Ahoy's Workspace"
+GOOGLE_SHEETS_WEBHOOK = "https://script.google.com/macros/s/AKfycbyJkzJgUTCwQ3npHXoLZFNT9q7URcAjWlUO_eCWJM6MStSCeFAD8HxQ0DkSPJ9B4Tvd/exec"
 
 [observability]
 enabled = true
