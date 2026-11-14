@@ -424,3 +424,35 @@ async function logout() {
   document.addEventListener("pointerleave",()=>document.body.classList.remove("ahoy-cursor-active"));
   document.addEventListener("pointerenter",()=>document.body.classList.add("ahoy-cursor-active"));
 })();
+
+/* SMOOTH AUTO-HIDE TOP NAVBAR */
+(function initSmoothNavbar() {
+  const header = document.getElementById("siteHeader");
+  if (!header) return;
+
+  let lastScroll = window.scrollY;
+  let ticking = false;
+
+  function updateNavbar() {
+    const currentScroll = window.scrollY;
+    const difference = currentScroll - lastScroll;
+
+    if (currentScroll <= 35) {
+      header.classList.remove("nav-hidden");
+    } else if (difference > 7 && currentScroll > 100) {
+      header.classList.add("nav-hidden");
+    } else if (difference < -7) {
+      header.classList.remove("nav-hidden");
+    }
+
+    lastScroll = currentScroll;
+    ticking = false;
+  }
+
+  window.addEventListener("scroll", () => {
+    if (!ticking) {
+      window.requestAnimationFrame(updateNavbar);
+      ticking = true;
+    }
+  }, { passive: true });
+})();
