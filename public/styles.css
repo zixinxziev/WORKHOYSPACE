@@ -393,3 +393,99 @@ body.ahoy-cursor-active #ahoy-cursor-glow,body.ahoy-cursor-active #ahoy-cursor-d
   .final-cta{border-radius:18px}
   .ws-nav button:hover{transform:none}
 }
+
+/* TOP BAR — FLOATING GLASS BUTTONS */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  transition:
+    transform .48s cubic-bezier(.22,.75,.25,1),
+    opacity .38s ease,
+    background .3s ease;
+  will-change: transform;
+}
+
+.site-header.nav-hidden {
+  transform: translateY(-115%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#mainNav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#mainNav a,
+#mainNav .nav-login {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 17px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 999px;
+  color: #c5c9d0;
+  background: rgba(255,255,255,.035);
+  text-decoration: none;
+  font-size: 13px;
+  transition: all .28s cubic-bezier(.2,.8,.2,1);
+  cursor: pointer;
+}
+
+#mainNav a:hover,
+#mainNav .nav-login:hover {
+  color: #fff;
+  background: linear-gradient(
+    145deg,
+    rgba(255,255,255,.19),
+    rgba(255,255,255,.055)
+  );
+  border-color: rgba(255,255,255,.3);
+  box-shadow:
+    0 7px 22px rgba(0,0,0,.3),
+    inset 0 1px 1px rgba(255,255,255,.2);
+  transform: translateY(-3px);
+}
+
+#mainNav .nav-register {
+  min-height: 46px;
+  padding: 0 25px;
+  margin-left: 8px;
+  border: 1px solid rgba(255,255,255,.75);
+  border-radius: 999px;
+  color: #17191d;
+  background: linear-gradient(145deg,#fff,#aeb4bd);
+  box-shadow:
+    0 5px 18px rgba(0,0,0,.25),
+    inset 0 1px 2px rgba(255,255,255,.9);
+  transition: all .28s ease;
+}
+
+#mainNav .nav-register:hover {
+  transform: translateY(-3px) scale(1.035);
+  box-shadow:
+    0 10px 28px rgba(255,255,255,.13),
+    0 8px 20px rgba(0,0,0,.3);
+  filter: brightness(1.08);
+}
+
+#mainNav a:active,
+#mainNav button:active {
+  transform: translateY(0) scale(.96);
+}
+
+@media(max-width:760px) {
+  #mainNav {
+    gap: 5px;
+  }
+
+  #mainNav a,
+  #mainNav button {
+    padding-left: 10px;
+    padding-right: 10px;
+    font-size: 11px;
+  }
+}
