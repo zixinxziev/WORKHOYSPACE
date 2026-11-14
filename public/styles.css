@@ -35,3 +35,16 @@
 .ws-assignment-detail td{padding:12px;background:#0d0d16}
 .ws-assignment-detail[hidden]{display:none}
 .ws-division-table-panel .ws-panel-heading{margin-bottom:10px}
+
+/* Individual assignment picker and versioned submission attachments */
+.ws-member-picker{position:relative;border:1px solid var(--line,rgba(255,255,255,.14));border-radius:12px;background:rgba(255,255,255,.035);color:inherit}
+.ws-member-picker>summary{cursor:pointer;list-style:none;padding:12px 14px;font-weight:600}
+.ws-member-picker>summary::-webkit-details-marker{display:none}
+.ws-member-picker>summary:after{content:"⌄";float:right;opacity:.7}
+.ws-member-picker[open]>summary:after{content:"⌃"}
+.ws-member-options{display:grid;gap:8px;max-height:220px;overflow:auto;padding:10px 14px 14px;border-top:1px solid var(--line,rgba(255,255,255,.12))}
+.ws-member-option{display:flex;align-items:center;gap:10px;padding:7px 4px;cursor:pointer}
+.ws-member-option input{accent-color:#9ba8c8;width:16px;height:16px}
+.ws-submission-version{padding:12px 0;border-top:1px solid var(--line,rgba(255,255,255,.12))}
+.ws-attachment-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.ws-attachment-actions{display:inline-flex;flex-wrap:wrap;gap:6px}
