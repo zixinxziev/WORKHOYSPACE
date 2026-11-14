@@ -10,7 +10,6 @@ let activityCache = [];
 let activeView = "dashboard";
 
 const tablet = $("#tablet"), visual = $(".hero-visual"), header = $("#siteHeader");
-let lastScroll = 0;
 if (visual && tablet && window.matchMedia("(pointer:fine)").matches) {
   visual.addEventListener("mousemove", e => {
     const r = visual.getBoundingClientRect(), x = (e.clientX-r.left)/r.width-.5, y=(e.clientY-r.top)/r.height-.5;
@@ -18,12 +17,91 @@ if (visual && tablet && window.matchMedia("(pointer:fine)").matches) {
   });
   visual.addEventListener("mouseleave", () => tablet.style.transform = "rotateX(0deg) rotateY(0deg)");
 }
-window.addEventListener("scroll", () => {
-  const y = window.scrollY;
-  if (y > 150 && y > lastScroll + 4) header?.classList.add("hidden");
-  else if (y < lastScroll - 4) header?.classList.remove("hidden");
-  lastScroll = y;
-}, {passive:true});
+
+/* Smooth navbar: one scroll controller, with fade + upward/downward motion. */
+(function initSmoothNavbar(navbar) {
+  if (!navbar) return;
+
+  // Inject the animation styles so no separate CSS edit is required.
+  if (!document.getElementById("ahoy-navbar-motion-style")) {
+    const style = document.createElement("style");
+    style.id = "ahoy-navbar-motion-style";
+    style.textContent = `
+      #siteHeader {
+        transform: translate3d(0,0,0);
+        opacity: 1;
+        visibility: visible;
+        will-change: transform, opacity;
+        transition: transform .72s cubic-bezier(.22,1,.36,1),
+                    opacity .58s ease,
+                    visibility 0s linear 0s;
+      }
+      #siteHeader.nav-hidden {
+        transform: translate3d(0,-110%,0);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transition: transform .72s cubic-bezier(.22,1,.36,1),
+                    opacity .58s ease,
+                    visibility 0s linear .72s;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #siteHeader, #siteHeader.nav-hidden { transition-duration: .01ms; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  let previousY = window.scrollY;
+  let direction = 0;
+  let accumulated = 0;
+  let framePending = false;
+  const DOWN_THRESHOLD = 22;
+  const UP_THRESHOLD = 13;
+  const TOP_THRESHOLD = 40;
+
+  function update() {
+    const currentY = Math.max(0, window.scrollY);
+    const delta = currentY - previousY;
+    previousY = currentY;
+
+    if (currentY <= TOP_THRESHOLD) {
+      navbar.classList.remove("nav-hidden");
+      direction = 0;
+      accumulated = 0;
+      framePending = false;
+      return;
+    }
+
+    if (Math.abs(delta) >= 1) {
+      const nextDirection = delta > 0 ? 1 : -1;
+      if (nextDirection !== direction) {
+        direction = nextDirection;
+        accumulated = 0;
+      }
+      accumulated += Math.abs(delta);
+
+      if (direction === 1 && currentY > 120 && accumulated >= DOWN_THRESHOLD) {
+        navbar.classList.add("nav-hidden");
+        accumulated = 0;
+      } else if (direction === -1 && accumulated >= UP_THRESHOLD) {
+        navbar.classList.remove("nav-hidden");
+        accumulated = 0;
+      }
+    }
+    framePending = false;
+  }
+
+  window.addEventListener("scroll", () => {
+    if (!framePending) {
+      framePending = true;
+      window.requestAnimationFrame(update);
+    }
+  }, { passive: true });
+
+  // Correct initial state if the page is restored at a scrolled position.
+  if (window.scrollY > 120) navbar.classList.add("nav-hidden");
+})(header);
 const nav = $("#mainNav");
 $("#mobileMenu")?.addEventListener("click", () => nav?.classList.toggle("open"));
 $$("nav a").forEach(a => a.addEventListener("click", () => nav?.classList.remove("open")));
@@ -423,36 +501,4 @@ async function logout() {
   },{passive:true});
   document.addEventListener("pointerleave",()=>document.body.classList.remove("ahoy-cursor-active"));
   document.addEventListener("pointerenter",()=>document.body.classList.add("ahoy-cursor-active"));
-})();
-
-/* SMOOTH AUTO-HIDE TOP NAVBAR */
-(function initSmoothNavbar() {
-  const header = document.getElementById("siteHeader");
-  if (!header) return;
-
-  let lastScroll = window.scrollY;
-  let ticking = false;
-
-  function updateNavbar() {
-    const currentScroll = window.scrollY;
-    const difference = currentScroll - lastScroll;
-
-    if (currentScroll <= 35) {
-      header.classList.remove("nav-hidden");
-    } else if (difference > 7 && currentScroll > 100) {
-      header.classList.add("nav-hidden");
-    } else if (difference < -7) {
-      header.classList.remove("nav-hidden");
-    }
-
-    lastScroll = currentScroll;
-    ticking = false;
-  }
-
-  window.addEventListener("scroll", () => {
-    if (!ticking) {
-      window.requestAnimationFrame(updateNavbar);
-      ticking = true;
-    }
-  }, { passive: true });
 })();
