@@ -392,3 +392,35 @@ async function logout() {
   const token=localStorage.getItem("ahoyWorkspaceToken");
   if(token) await enterWorkspace(); else await checkInitialSetup();
 })();
+
+
+
+/* Midnight Glass cursor interaction: decorative only, no app logic changes. */
+(function initAhoyCursor(){
+  if (!window.matchMedia || !window.matchMedia("(pointer:fine)").matches) return;
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const glow = document.createElement("div");
+  glow.id = "ahoy-cursor-glow";
+  glow.setAttribute("aria-hidden","true");
+  const dot = document.createElement("div");
+  dot.id = "ahoy-cursor-dot";
+  dot.setAttribute("aria-hidden","true");
+  document.body.append(glow,dot);
+  document.body.classList.add("ahoy-cursor-active");
+
+  let x = window.innerWidth/2, y = window.innerHeight/2;
+  let gx = x, gy = y, raf = 0;
+  const render = () => {
+    gx += (x-gx)*.16;
+    gy += (y-gy)*.16;
+    glow.style.transform = `translate3d(${gx}px,${gy}px,0)`;
+    dot.style.transform = `translate3d(${x}px,${y}px,0)`;
+    raf = 0;
+  };
+  window.addEventListener("pointermove",event=>{
+    x=event.clientX;y=event.clientY;
+    if(!raf) raf=requestAnimationFrame(render);
+  },{passive:true});
+  document.addEventListener("pointerleave",()=>document.body.classList.remove("ahoy-cursor-active"));
+  document.addEventListener("pointerenter",()=>document.body.classList.add("ahoy-cursor-active"));
+})();
