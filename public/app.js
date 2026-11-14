@@ -465,7 +465,7 @@ async function logout() {
   window.scrollTo({top:0,behavior:"smooth"});
 }
 (async function init(){
-  const stages=[["Good morning, Admin.","Your team's progress at a glance."],["Task assigned.","A new task is ready for the team."],["Proof submitted.","A member has uploaded work for review."],["Task approved.","Review complete. The assignment is done."]];
+  const stages=[["SOBAHAL KHER PENGAWAS","Your team's progress at a glance."],["Task assigned.","A new task is ready for the team."],["Proof submitted.","A member has uploaded work for review."],["Task approved.","Review complete. The assignment is done."]];
   let stage=0; setInterval(()=>{const w=$("#demoContent .demo-welcome");if(!w)return;stage=(stage+1)%stages.length;w.querySelector("b").textContent=stages[stage][0];w.querySelector("span").textContent=stages[stage][1];$("#demoStep").textContent=`0${stage+1} / 04`;},4200);
   const token=localStorage.getItem("ahoyWorkspaceToken");
   if(token) await enterWorkspace(); else await checkInitialSetup();
