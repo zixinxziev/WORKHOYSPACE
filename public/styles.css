@@ -1070,3 +1070,16 @@ body.ahoy-cursor-active #ahoy-cursor-dot { opacity: 1; }
     transition-duration: .01ms !important;
   }
 }
+
+
+.ws-app-copyright {
+  width: 100%;
+  margin-top: 42px;
+  padding: 24px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #858d99;
+  font-size: 12px;
+  letter-spacing: 0.35px;
+  text-align: center;
+}
+
