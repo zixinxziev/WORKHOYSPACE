@@ -93,13 +93,18 @@ async function logActivity(env, actorId, action, targetType = null, targetId = n
 async function syncGoogleSheets(env, reason = "data_updated") {
   if (!env.GOOGLE_SHEETS_WEBHOOK || !env.GOOGLE_SHEETS_SECRET) return { configured: false };
   try {
-    const [members, divisions, tasks, progress, submissions, activity] = await Promise.all([
+    const [members, divisions, tasks, progress, submissions, activity, reviewHistory] = await Promise.all([
       env.DB.prepare(`SELECT u.id, u.username, u.role, u.status, u.created_at, d.name AS division FROM users u LEFT JOIN divisions d ON d.id = u.division_id ORDER BY u.created_at DESC`).all(),
       env.DB.prepare(`SELECT d.id, d.name, d.description, d.status, d.created_at, COUNT(u.id) AS member_count FROM divisions d LEFT JOIN users u ON u.division_id = d.id GROUP BY d.id ORDER BY d.name`).all(),
-      env.DB.prepare(`SELECT id, title, description, target, deadline, priority, created_at FROM tasks ORDER BY created_at DESC`).all(),
-      env.DB.prepare(`SELECT a.id AS assignment_id, t.title AS task, u.username AS member, d.name AS division, a.status, a.member_note, a.reviewer_note, a.submitted_at, a.reviewed_at, a.updated_at FROM task_assignments a JOIN tasks t ON t.id=a.task_id JOIN users u ON u.id=a.member_id LEFT JOIN divisions d ON d.id=u.division_id ORDER BY a.updated_at DESC`).all(),
-      env.DB.prepare(`SELECT p.id, t.title AS task, u.username AS member, p.original_name, p.content_type, p.size_bytes, p.created_at FROM proof_files p JOIN task_assignments a ON a.id=p.assignment_id JOIN tasks t ON t.id=a.task_id JOIN users u ON u.id=a.member_id ORDER BY p.created_at DESC`).all(),
-      env.DB.prepare(`SELECT l.id, u.username AS actor, l.action, l.target_type, l.target_id, l.details, l.created_at FROM activity_logs l LEFT JOIN users u ON u.id=l.actor_id ORDER BY l.created_at DESC LIMIT 5000`).all()
+      env.DB.prepare(`SELECT id, title, description, target, division_id, start_time, deadline, priority, created_at FROM tasks ORDER BY created_at DESC`).all(),
+      env.DB.prepare(`SELECT a.id AS assignment_id, t.title AS task, u.username AS member, d.name AS division, a.status, a.member_note, a.reviewer_note, a.submitted_at, a.reviewed_at, a.updated_at, t.start_time, t.deadline FROM task_assignments a JOIN tasks t ON t.id=a.task_id JOIN users u ON u.id=a.member_id LEFT JOIN divisions d ON d.id=t.division_id ORDER BY a.updated_at DESC`).all(),
+      env.DB.prepare(`SELECT * FROM (
+        SELECT x.id, t.title AS task, u.username AS member, x.attachment_type, x.url, x.original_name, x.content_type, x.size_bytes, s.submitted_at AS created_at FROM submission_attachments x JOIN submission_records s ON s.id=x.submission_id JOIN task_assignments a ON a.id=s.assignment_id JOIN tasks t ON t.id=a.task_id JOIN users u ON u.id=a.member_id
+        UNION ALL
+        SELECT p.id, t.title AS task, u.username AS member, 'legacy_file' AS attachment_type, NULL AS url, p.original_name, p.content_type, p.size_bytes, p.created_at AS created_at FROM proof_files p JOIN task_assignments a ON a.id=p.assignment_id JOIN tasks t ON t.id=a.task_id JOIN users u ON u.id=a.member_id
+      ) ORDER BY created_at DESC`).all(),
+      env.DB.prepare(`SELECT l.id, u.username AS actor, l.action, l.target_type, l.target_id, l.details, l.created_at FROM activity_logs l LEFT JOIN users u ON u.id=l.actor_id ORDER BY l.created_at DESC LIMIT 5000`).all(),
+      env.DB.prepare(`SELECT r.id, t.title AS task, m.username AS member, reviewer.username AS reviewer, r.status, r.note, r.reviewed_at FROM submission_reviews r JOIN task_assignments a ON a.id=r.assignment_id JOIN tasks t ON t.id=a.task_id JOIN users m ON m.id=a.member_id LEFT JOIN users reviewer ON reviewer.id=r.reviewer_id ORDER BY r.reviewed_at DESC`).all()
     ]);
     const payload = {
       secret: env.GOOGLE_SHEETS_SECRET,
@@ -109,7 +114,7 @@ async function syncGoogleSheets(env, reason = "data_updated") {
       sheets: {
         Overview: [{ metric: "Members", value: (members.results || []).length }, { metric: "Divisions", value: (divisions.results || []).length }, { metric: "Tasks", value: (tasks.results || []).length }, { metric: "Assignments", value: (progress.results || []).length }, { metric: "Completed", value: (progress.results || []).filter(x => x.status === "completed").length }, { metric: "Pending Review", value: (progress.results || []).filter(x => x.status === "submitted").length }],
         Members: members.results || [], Divisions: divisions.results || [], Tasks: tasks.results || [],
-        Progress: progress.results || [], Submissions: submissions.results || [], Activity_Logs: activity.results || []
+        Progress: progress.results || [], Submissions: submissions.results || [], Reviews: reviewHistory.results || [], Activity_Logs: activity.results || []
       }
     };
     const response = await fetch(env.GOOGLE_SHEETS_WEBHOOK, {
@@ -196,12 +201,7 @@ async function handleApi(request, env, url, ctx) {
       console.error("Member registration failed:", error);
       return json({ error: "ACCOUNT_CREATE_FAILED" }, 400);
     }
-    // Give a new member every existing task currently assigned to their chosen division.
-    const existingTasks = await env.DB.prepare("SELECT id FROM tasks WHERE division_id=? ORDER BY created_at ASC").bind(divisionId).all();
-    for (const task of (existingTasks.results || [])) {
-      await env.DB.prepare("INSERT OR IGNORE INTO task_assignments (id, task_id, member_id) VALUES (?, ?, ?)")
-        .bind(id(), task.id, userId).run();
-    }
+    // Tasks are assigned explicitly per member. Joining a division never auto-assigns tasks.
     await logActivity(env, userId, "member_registered", "user", userId, { divisionId, division: division.name });
     triggerGoogleSheetsSync(ctx, env, "member_registered");
     return createSession(env, userId, { id: userId, username, role: "member", division_id: divisionId });
@@ -328,13 +328,7 @@ async function handleApi(request, env, url, ctx) {
       if (!division) return json({ error: "ACTIVE_DIVISION_NOT_FOUND" }, 404);
     }
     await env.DB.prepare("UPDATE users SET division_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(divisionId, target.id).run();
-    if (divisionId && target.role === "member") {
-      const existingTasks = await env.DB.prepare("SELECT id FROM tasks WHERE division_id=?").bind(divisionId).all();
-      for (const task of (existingTasks.results || [])) {
-        await env.DB.prepare("INSERT OR IGNORE INTO task_assignments (id, task_id, member_id) VALUES (?, ?, ?)")
-          .bind(id(), task.id, target.id).run();
-      }
-    }
+    // Changing a member's division does not create assignments retroactively.
     await logActivity(env, user.id, "member_division_changed", "user", target.id, { divisionId });
     triggerGoogleSheetsSync(ctx, env, "member_division_changed");
     return json({ ok: true });
@@ -380,8 +374,11 @@ async function handleApi(request, env, url, ctx) {
       const result = await env.DB.prepare(`
         SELECT a.id AS assignment_id,
           CASE WHEN a.id IS NULL THEN 'waiting' ELSE a.status END AS assignment_status,
-          a.member_note, a.reviewer_note, a.submitted_at, a.reviewed_at,
-          t.id AS task_id, t.title, t.description, t.target, t.deadline,
+          a.member_note, a.reviewer_note,
+          CASE WHEN a.id IS NULL THEN NULL WHEN EXISTS (SELECT 1 FROM submission_records sr WHERE sr.assignment_id=a.id) THEN (SELECT sr.submitted_at FROM submission_records sr WHERE sr.assignment_id=a.id ORDER BY sr.submitted_at DESC, sr.rowid DESC LIMIT 1) WHEN EXISTS (SELECT 1 FROM proof_files pf WHERE pf.assignment_id=a.id) THEN (SELECT MAX(pf.created_at) FROM proof_files pf WHERE pf.assignment_id=a.id) ELSE a.submitted_at END AS submitted_at,
+          CASE WHEN a.id IS NULL THEN NULL WHEN EXISTS (SELECT 1 FROM submission_records sr WHERE sr.assignment_id=a.id) THEN (SELECT rv.reviewed_at FROM submission_reviews rv WHERE rv.submission_id=(SELECT sr.id FROM submission_records sr WHERE sr.assignment_id=a.id ORDER BY sr.submitted_at DESC, sr.rowid DESC LIMIT 1) ORDER BY rv.reviewed_at DESC LIMIT 1) ELSE COALESCE(a.reviewed_at, (SELECT MAX(rv.reviewed_at) FROM submission_reviews rv WHERE rv.assignment_id=a.id)) END AS reviewed_at,
+          CASE WHEN a.id IS NOT NULL AND (EXISTS (SELECT 1 FROM submission_records sr WHERE sr.assignment_id=a.id) OR EXISTS (SELECT 1 FROM proof_files pf WHERE pf.assignment_id=a.id) OR EXISTS (SELECT 1 FROM submission_reviews rv WHERE rv.assignment_id=a.id)) THEN 1 ELSE 0 END AS has_submission_history,
+          t.id AS task_id, t.title, t.description, t.target, t.start_time, t.deadline,
           t.priority, t.created_at, t.division_id, d.name AS division_name, u.username AS member_username
         FROM tasks t
         LEFT JOIN task_assignments a ON a.task_id = t.id
@@ -393,13 +390,16 @@ async function handleApi(request, env, url, ctx) {
     } else {
       const result = await env.DB.prepare(`
         SELECT a.id AS assignment_id, a.status AS assignment_status, a.member_note, a.reviewer_note,
-          a.submitted_at, a.reviewed_at, t.id AS task_id, t.title, t.description, t.target, t.deadline,
+          CASE WHEN EXISTS (SELECT 1 FROM submission_records sr WHERE sr.assignment_id=a.id) THEN (SELECT sr.submitted_at FROM submission_records sr WHERE sr.assignment_id=a.id ORDER BY sr.submitted_at DESC, sr.rowid DESC LIMIT 1) WHEN EXISTS (SELECT 1 FROM proof_files pf WHERE pf.assignment_id=a.id) THEN (SELECT MAX(pf.created_at) FROM proof_files pf WHERE pf.assignment_id=a.id) ELSE a.submitted_at END AS submitted_at,
+          CASE WHEN EXISTS (SELECT 1 FROM submission_records sr WHERE sr.assignment_id=a.id) THEN (SELECT rv.reviewed_at FROM submission_reviews rv WHERE rv.submission_id=(SELECT sr.id FROM submission_records sr WHERE sr.assignment_id=a.id ORDER BY sr.submitted_at DESC, sr.rowid DESC LIMIT 1) ORDER BY rv.reviewed_at DESC LIMIT 1) ELSE COALESCE(a.reviewed_at, (SELECT MAX(rv.reviewed_at) FROM submission_reviews rv WHERE rv.assignment_id=a.id)) END AS reviewed_at,
+          CASE WHEN EXISTS (SELECT 1 FROM submission_records sr WHERE sr.assignment_id=a.id) OR EXISTS (SELECT 1 FROM proof_files pf WHERE pf.assignment_id=a.id) OR EXISTS (SELECT 1 FROM submission_reviews rv WHERE rv.assignment_id=a.id) THEN 1 ELSE 0 END AS has_submission_history,
+          t.id AS task_id, t.title, t.description, t.target, t.start_time, t.deadline,
           t.priority, t.created_at, t.division_id, d.name AS division_name
         FROM task_assignments a JOIN tasks t ON t.id = a.task_id
         LEFT JOIN divisions d ON d.id=t.division_id
-        WHERE a.member_id = ? AND (t.division_id = ? OR t.division_id IS NULL)
+        WHERE a.member_id = ?
         ORDER BY t.created_at DESC
-      `).bind(user.id, user.division_id || "").all();
+      `).bind(user.id).all();
       rows = result.results || [];
     }
     return json(rows);
@@ -411,26 +411,29 @@ async function handleApi(request, env, url, ctx) {
     const title = String(body.title || "").trim().slice(0, 140);
     const target = String(body.target || "").trim();
     const description = String(body.description || "").trim().slice(0, 3000);
+    const startTime = body.startTime ? String(body.startTime) : null;
     const deadline = body.deadline ? String(body.deadline) : null;
     const priority = ["low", "medium", "high"].includes(body.priority) ? body.priority : "medium";
     const divisionId = String(body.divisionId || "");
+    const memberIds = Array.isArray(body.memberIds) ? [...new Set(body.memberIds.map(x => String(x || "")).filter(Boolean))] : [];
     if (!title) return json({ error: "TASK_TITLE_REQUIRED" }, 400);
     if (!divisionId) return json({ error: "DIVISION_REQUIRED" }, 400);
+    if (!memberIds.length) return json({ error: "MEMBERS_REQUIRED" }, 400);
     const division = await env.DB.prepare("SELECT id, name FROM divisions WHERE id=? AND status='active'").bind(divisionId).first();
     if (!division) return json({ error: "ACTIVE_DIVISION_NOT_FOUND" }, 404);
-    const result = await env.DB.prepare("SELECT id FROM users WHERE role='member' AND status='active' AND division_id=?")
+    const divisionMembers = await env.DB.prepare("SELECT id FROM users WHERE role='member' AND status='active' AND division_id=?")
       .bind(divisionId).all();
-    const members = result.results || [];
+    const availableIds = new Set((divisionMembers.results || []).map(member => member.id));
+    if (memberIds.some(memberId => !availableIds.has(memberId))) return json({ error: "MEMBER_SELECTION_INVALID" }, 400);
+    const members = memberIds.map(memberId => ({ id: memberId }));
     const taskId = id();
-    await env.DB.prepare("INSERT INTO tasks (id, title, description, target, deadline, priority, created_by, division_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(taskId, title, description, target || division.name, deadline, priority, user.id, divisionId).run();
-    for (const member of members) {
-      await env.DB.prepare("INSERT OR IGNORE INTO task_assignments (id, task_id, member_id) VALUES (?, ?, ?)")
-        .bind(id(), taskId, member.id).run();
-    }
-    await logActivity(env, user.id, "task_created", "task", taskId, { title, divisionId, division: division.name, assignments: members.length });
+    const statements = [env.DB.prepare("INSERT INTO tasks (id, title, description, target, start_time, deadline, priority, created_by, division_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(taskId, title, description, target || division.name, startTime, deadline, priority, user.id, divisionId)];
+    for (const member of members) statements.push(env.DB.prepare("INSERT INTO task_assignments (id, task_id, member_id) VALUES (?, ?, ?)").bind(id(), taskId, member.id));
+    await env.DB.batch(statements);
+    await logActivity(env, user.id, "task_created", "task", taskId, { title, divisionId, division: division.name, memberIds, assignments: members.length, startTime, deadline });
     triggerGoogleSheetsSync(ctx, env, "task_created");
-    return json({ ok: true, taskId, assigned: members.length, division: division.name }, 201);
+    return json({ ok: true, taskId, assigned: members.length, division: division.name, members: members.length }, 201);
   }
 
   const assignmentStatus = path.match(/^\/api\/assignments\/([^/]+)\/status$/);
@@ -457,25 +460,72 @@ async function handleApi(request, env, url, ctx) {
     if (!assignment) return json({ error: "NOT_FOUND" }, 404);
     if (assignment.status === "completed") return json({ error: "TASK_ALREADY_COMPLETED" }, 409);
     const form = await request.formData();
-    const file = form.get("file");
-    const note = String(form.get("note") || "").trim();
-    if (!(file instanceof File) || !file.size) return json({ error: "FILE_REQUIRED" }, 400);
-    const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
-    if (!allowed.includes(file.type)) return json({ error: "FILE_TYPE_NOT_ALLOWED" }, 415);
-    if (file.size > 5 * 1024 * 1024) return json({ error: "FILE_TOO_LARGE_MAX_5MB" }, 413);
-    const proofId = id();
-    const objectKey = `${user.id}/${assignmentId}/${proofId}`;
-    await env.PROOFS.put(objectKey, await file.arrayBuffer(), {
-      metadata: { contentType: file.type, originalName: file.name.slice(0, 180) }
-    });
-    await env.DB.prepare(`INSERT INTO proof_files (id, assignment_id, object_key, original_name, content_type, size_bytes, uploaded_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .bind(proofId, assignmentId, objectKey, file.name.slice(0, 180), file.type, file.size, user.id).run();
-    await env.DB.prepare(`UPDATE task_assignments SET status = 'submitted', member_note = ?, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    const note = String(form.get("note") || "").trim().slice(0, 2000);
+    const urlValue = String(form.get("link") || "").trim();
+    const files = form.getAll("files").filter(x => x instanceof File && x.size > 0);
+    // Backward compatibility with the previous single-file field.
+    const oldFile = form.get("file");
+    if (!files.length && oldFile instanceof File && oldFile.size > 0) files.push(oldFile);
+    if (!files.length && !urlValue) return json({ error: "ATTACHMENT_REQUIRED" }, 400);
+    if (files.length > 5) return json({ error: "TOO_MANY_FILES_MAX_5" }, 400);
+    let safeUrl = null;
+    if (urlValue) {
+      try { const parsed = new URL(urlValue); if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error(); safeUrl = parsed.toString(); }
+      catch { return json({ error: "INVALID_ATTACHMENT_URL" }, 400); }
+    }
+    const allowedMime = new Set([
+      "image/jpeg", "image/png", "image/webp", "application/pdf",
+      "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/csv", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ]);
+    const allowedExt = /\.(jpg|jpeg|png|webp|pdf|doc|docx|xls|xlsx|csv|ppt|pptx)$/i;
+    let totalBytes = 0;
+    for (const file of files) {
+      if (!allowedMime.has(file.type) && !allowedExt.test(file.name)) return json({ error: "FILE_TYPE_NOT_ALLOWED" }, 415);
+      if (file.size > 10 * 1024 * 1024) return json({ error: "FILE_TOO_LARGE_MAX_10MB" }, 413);
+      totalBytes += file.size;
+    }
+    if (totalBytes > 20 * 1024 * 1024) return json({ error: "TOTAL_FILES_TOO_LARGE_MAX_20MB" }, 413);
+    const submissionId = id();
+    await env.DB.prepare("INSERT INTO submission_records (id, assignment_id, member_note, submitted_at, created_by) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)")
+      .bind(submissionId, assignmentId, note, user.id).run();
+    if (safeUrl) {
+      await env.DB.prepare("INSERT INTO submission_attachments (id, submission_id, attachment_type, url, original_name, content_type, size_bytes) VALUES (?, ?, 'link', ?, ?, 'text/uri-list', 0)")
+        .bind(id(), submissionId, safeUrl, safeUrl.slice(0, 500)).run();
+    }
+    for (const file of files) {
+      const attachmentId = id();
+      const objectKey = `${user.id}/${assignmentId}/${submissionId}/${attachmentId}`;
+      await env.PROOFS.put(objectKey, await file.arrayBuffer(), { metadata: { contentType: file.type || "application/octet-stream", originalName: file.name.slice(0, 180) } });
+      await env.DB.prepare("INSERT INTO submission_attachments (id, submission_id, attachment_type, object_key, original_name, content_type, size_bytes) VALUES (?, ?, 'file', ?, ?, ?, ?)")
+        .bind(attachmentId, submissionId, objectKey, file.name.slice(0, 180), file.type || "application/octet-stream", file.size).run();
+    }
+    await env.DB.prepare(`UPDATE task_assignments SET status = 'submitted', member_note = ?, reviewer_note = NULL, reviewed_at = NULL, submitted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .bind(note, assignmentId).run();
-    await logActivity(env, user.id, "proof_submitted", "assignment", assignmentId, { proofId, filename: file.name });
+    await logActivity(env, user.id, "proof_submitted", "assignment", assignmentId, { submissionId, fileCount: files.length, hasLink: !!safeUrl, versionRetained: true });
     triggerGoogleSheetsSync(ctx, env, "proof_submitted");
-    return json({ ok: true, proofId }, 201);
+    return json({ ok: true, submissionId, files: files.length, hasLink: !!safeUrl }, 201);
+  }
+
+  const submissionsRoute = path.match(/^\/api\/assignments\/([^/]+)\/submissions$/);
+  if (submissionsRoute && method === "GET") {
+    const assignmentId = submissionsRoute[1];
+    const assignment = await env.DB.prepare("SELECT id, member_id FROM task_assignments WHERE id = ?").bind(assignmentId).first();
+    if (!assignment) return json({ error: "NOT_FOUND" }, 404);
+    if (assignment.member_id !== user.id && !requireStaff(user)) return json({ error: "FORBIDDEN" }, 403);
+    const { results: submissions } = await env.DB.prepare("SELECT id, member_note, submitted_at, created_by FROM submission_records WHERE assignment_id=? ORDER BY submitted_at DESC, rowid DESC").bind(assignmentId).all();
+    const { results: reviewRows } = await env.DB.prepare(`SELECT r.id, r.submission_id, r.status, r.note, r.reviewed_at, u.username AS reviewer_username FROM submission_reviews r LEFT JOIN users u ON u.id=r.reviewer_id WHERE r.assignment_id=? ORDER BY r.reviewed_at DESC`).bind(assignmentId).all();
+    const output = [];
+    for (const submission of (submissions || [])) {
+      const { results: attachments } = await env.DB.prepare("SELECT id, attachment_type, url, original_name, content_type, size_bytes FROM submission_attachments WHERE submission_id=? ORDER BY rowid").bind(submission.id).all();
+      output.push({ ...submission, attachments: attachments || [], reviews: (reviewRows || []).filter(r => r.submission_id === submission.id) });
+    }
+    // Include legacy proof uploads as a read-only historical submission for pre-update tasks.
+    const { results: legacy } = await env.DB.prepare("SELECT id, original_name, content_type, size_bytes, created_at FROM proof_files WHERE assignment_id=? ORDER BY created_at DESC").bind(assignmentId).all();
+    const legacyReviews = (reviewRows || []).filter(r => !r.submission_id);
+    if ((legacy || []).length || legacyReviews.length) output.push({ id: "legacy", member_note: "Previous upload (legacy)", submitted_at: legacy?.[0]?.created_at || null, attachments: (legacy || []).map(x => ({ id: x.id, attachment_type: "legacy_file", original_name: x.original_name, content_type: x.content_type, size_bytes: x.size_bytes })), reviews: legacyReviews });
+    return json(output);
   }
 
   const proofList = path.match(/^\/api\/assignments\/([^/]+)\/proofs$/);
@@ -485,28 +535,32 @@ async function handleApi(request, env, url, ctx) {
       .bind(assignmentId).first();
     if (!assignment) return json({ error: "NOT_FOUND" }, 404);
     if (assignment.member_id !== user.id && !requireStaff(user)) return json({ error: "FORBIDDEN" }, 403);
-    const { results } = await env.DB.prepare(`
-      SELECT id, original_name, content_type, size_bytes, created_at
-      FROM proof_files WHERE assignment_id = ? ORDER BY created_at DESC
-    `).bind(assignmentId).all();
-    return json(results || []);
+    const { results: legacy } = await env.DB.prepare(`SELECT id, original_name, content_type, size_bytes, created_at FROM proof_files WHERE assignment_id = ? ORDER BY created_at DESC`).bind(assignmentId).all();
+    const { results: modern } = await env.DB.prepare(`SELECT x.id, x.original_name, x.content_type, x.size_bytes, s.submitted_at AS created_at FROM submission_attachments x JOIN submission_records s ON s.id=x.submission_id WHERE s.assignment_id=? AND x.attachment_type='file' ORDER BY s.submitted_at DESC`).bind(assignmentId).all();
+    return json([...(modern || []), ...(legacy || [])]);
   }
 
   const proofGet = path.match(/^\/api\/proofs\/([^/]+)$/);
   if (proofGet && method === "GET") {
-    const proof = await env.DB.prepare(`
+    let proof = await env.DB.prepare(`
       SELECT p.*, a.member_id FROM proof_files p
       JOIN task_assignments a ON a.id = p.assignment_id WHERE p.id = ?
+    `).bind(proofGet[1]).first();
+    if (!proof) proof = await env.DB.prepare(`
+      SELECT x.*, a.member_id FROM submission_attachments x
+      JOIN submission_records s ON s.id=x.submission_id
+      JOIN task_assignments a ON a.id=s.assignment_id WHERE x.id=? AND x.attachment_type='file'
     `).bind(proofGet[1]).first();
     if (!proof) return json({ error: "NOT_FOUND" }, 404);
     if (proof.member_id !== user.id && !requireStaff(user)) return json({ error: "FORBIDDEN" }, 403);
     const object = await env.PROOFS.get(proof.object_key, "arrayBuffer");
     if (!object) return json({ error: "PROOF_FILE_MISSING" }, 404);
     const filename = String(proof.original_name || "proof").replace(/["\r\n]/g, "_");
+    const disposition = new URL(request.url).searchParams.get("download") === "1" ? "attachment" : "inline";
     return new Response(object, { headers: {
-      "content-type": proof.content_type,
+      "content-type": proof.content_type || "application/octet-stream",
       "content-length": String(proof.size_bytes),
-      "content-disposition": `inline; filename="${filename}"`,
+      "content-disposition": `${disposition}; filename="${filename}"`,
       "cache-control": "private, no-store",
       "x-content-type-options": "nosniff"
     }});
@@ -522,6 +576,9 @@ async function handleApi(request, env, url, ctx) {
     if (!["completed", "revision"].includes(status)) return json({ error: "INVALID_REVIEW_STATUS" }, 400);
     const assignment = await env.DB.prepare("SELECT id FROM task_assignments WHERE id = ?").bind(assignmentId).first();
     if (!assignment) return json({ error: "NOT_FOUND" }, 404);
+    const latestSubmission = await env.DB.prepare("SELECT id FROM submission_records WHERE assignment_id=? ORDER BY submitted_at DESC, rowid DESC LIMIT 1").bind(assignmentId).first();
+    await env.DB.prepare(`INSERT INTO submission_reviews (id, assignment_id, submission_id, reviewer_id, status, note) VALUES (?, ?, ?, ?, ?, ?)`)
+      .bind(id(), assignmentId, latestSubmission?.id || null, user.id, status, note).run();
     await env.DB.prepare(`UPDATE task_assignments SET status = ?, reviewer_note = ?, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
       .bind(status, note, assignmentId).run();
     await logActivity(env, user.id, status === "completed" ? "task_approved" : "revision_requested", "assignment", assignmentId, { note });
