@@ -17,9 +17,10 @@ function doPost(e) {
       Overview: ["metric", "value"],
       Members: ["id", "username", "role", "status", "created_at", "division"],
       Divisions: ["id", "name", "description", "status", "created_at", "member_count"],
-      Tasks: ["id", "title", "description", "target", "deadline", "priority", "created_at"],
-      Progress: ["assignment_id", "task", "member", "division", "status", "member_note", "reviewer_note", "submitted_at", "reviewed_at", "updated_at"],
-      Submissions: ["id", "task", "member", "original_name", "content_type", "size_bytes", "created_at"],
+      Tasks: ["id", "title", "description", "target", "division_id", "start_time", "deadline", "priority", "created_at"],
+      Progress: ["assignment_id", "task", "member", "division", "status", "member_note", "reviewer_note", "submitted_at", "reviewed_at", "updated_at", "start_time", "deadline"],
+      Submissions: ["id", "task", "member", "attachment_type", "url", "original_name", "content_type", "size_bytes", "created_at"],
+      Reviews: ["id", "task", "member", "reviewer", "status", "note", "reviewed_at"],
       Activity_Logs: ["id", "actor", "action", "target_type", "target_id", "details", "created_at"]
     };
     Object.keys(definitions).forEach(function(name) {
