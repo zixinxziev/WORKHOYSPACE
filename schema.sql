@@ -5,7 +5,6 @@ CREATE TABLE IF NOT EXISTS divisions (
   name TEXT NOT NULL COLLATE NOCASE UNIQUE,
   description TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),
-  division_id TEXT REFERENCES divisions(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -16,6 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('pengawas','admin','member')),
   status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','disabled')),
+  division_id TEXT REFERENCES divisions(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -26,9 +26,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   description TEXT,
   target TEXT,
+  start_time TEXT,
   deadline TEXT,
   priority TEXT NOT NULL DEFAULT 'medium' CHECK(priority IN ('low','medium','high')),
   created_by TEXT NOT NULL REFERENCES users(id),
+  division_id TEXT REFERENCES divisions(id) ON DELETE SET NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -37,8 +39,7 @@ CREATE TABLE IF NOT EXISTS task_assignments (
   id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   member_id TEXT NOT NULL REFERENCES users(id),
-  status TEXT NOT NULL DEFAULT 'not_started'
-    CHECK(status IN ('not_started','in_progress','submitted','revision','completed')),
+  status TEXT NOT NULL DEFAULT 'not_started' CHECK(status IN ('not_started','in_progress','submitted','revision','completed')),
   member_note TEXT,
   reviewer_note TEXT,
   submitted_at TEXT,
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS task_assignments (
   UNIQUE(task_id, member_id)
 );
 
+-- Kept for backwards compatibility with uploads made before versioned submissions.
 CREATE TABLE IF NOT EXISTS proof_files (
   id TEXT PRIMARY KEY,
   assignment_id TEXT NOT NULL REFERENCES task_assignments(id) ON DELETE CASCADE,
@@ -56,6 +58,36 @@ CREATE TABLE IF NOT EXISTS proof_files (
   size_bytes INTEGER NOT NULL,
   uploaded_by TEXT NOT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS submission_records (
+  id TEXT PRIMARY KEY,
+  assignment_id TEXT NOT NULL REFERENCES task_assignments(id) ON DELETE CASCADE,
+  member_note TEXT,
+  submitted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT REFERENCES users(id)
+);
+CREATE TABLE IF NOT EXISTS submission_attachments (
+  id TEXT PRIMARY KEY,
+  submission_id TEXT NOT NULL REFERENCES submission_records(id) ON DELETE CASCADE,
+  attachment_type TEXT NOT NULL CHECK(attachment_type IN ('file','link')),
+  object_key TEXT,
+  url TEXT,
+  original_name TEXT,
+  content_type TEXT,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CHECK ((attachment_type='file' AND object_key IS NOT NULL AND url IS NULL) OR (attachment_type='link' AND url IS NOT NULL AND object_key IS NULL))
+);
+
+CREATE TABLE IF NOT EXISTS submission_reviews (
+  id TEXT PRIMARY KEY,
+  assignment_id TEXT NOT NULL REFERENCES task_assignments(id) ON DELETE CASCADE,
+  submission_id TEXT REFERENCES submission_records(id) ON DELETE SET NULL,
+  reviewer_id TEXT REFERENCES users(id),
+  status TEXT NOT NULL CHECK(status IN ('completed','revision')),
+  note TEXT,
+  reviewed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -77,7 +109,11 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_division ON users(division_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_division ON tasks(division_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_member_status ON task_assignments(member_id, status);
 CREATE INDEX IF NOT EXISTS idx_assignments_task ON task_assignments(task_id);
 CREATE INDEX IF NOT EXISTS idx_logs_created ON activity_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_submission_assignment ON submission_records(assignment_id, submitted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_submission_attachment_parent ON submission_attachments(submission_id);
+CREATE INDEX IF NOT EXISTS idx_submission_reviews_assignment ON submission_reviews(assignment_id, reviewed_at DESC);
