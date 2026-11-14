@@ -2,6 +2,7 @@ PRAGMA foreign_keys = ON;
 
 -- Task start date/time. Existing tasks remain valid with NULL start_time.
 ALTER TABLE tasks ADD COLUMN start_time TEXT;
+ALTER TABLE tasks ADD COLUMN division_id TEXT REFERENCES divisions(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_tasks_division ON tasks(division_id);
 
