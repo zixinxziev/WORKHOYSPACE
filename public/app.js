@@ -227,16 +227,59 @@ function escapeHtml(s) { return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;
 function labelStatus(s) { return ({not_started:"Not started",in_progress:"In progress",submitted:"Submitted",revision:"Revision requested",completed:"Completed",waiting:"Waiting for members"})[s]||s; }
 function pill(s) { const cls=s==="completed"?"green":s==="submitted"?"blue":s==="revision"?"red":s==="in_progress"?"warn":""; return `<span class="ws-pill ${cls}">${escapeHtml(labelStatus(s))}</span>`; }
 function dateText(s) { if(!s) return "No deadline"; const d=new Date(s); return Number.isNaN(d.getTime())?escapeHtml(s):d.toLocaleString(); }
+
 function shell() {
-  $("#landingMain").classList.add("hidden"); $("#siteFooter").classList.add("hidden");
-  $("#mainNav").classList.add("hidden"); $("#mobileMenu").classList.add("hidden");
-  const root=$("#workspaceRoot"); root.classList.remove("hidden");
-  root.innerHTML=`<div class="ws-layout"><aside class="ws-sidebar"><div class="ws-user"><strong>${escapeHtml(currentUser.username)}</strong><small>${escapeHtml(currentUser.role)}</small></div>
-    <div class="ws-nav"><button data-view="dashboard" class="active">Overview</button><button data-view="tasks">Tasks</button><button data-view="history">History</button>${currentUser.role!=="member"?'<button data-view="manage">Manage</button>':''}</div>
-    <button class="ws-logout" id="logoutBtn">Sign out</button></aside><section class="ws-main"><div class="ws-top"><div><h1 id="viewTitle">Workspace overview</h1><p id="viewSubtitle">Your work, progress, and updates in one place.</p></div><span class="ws-pill">${escapeHtml(currentUser.role.toUpperCase())}</span></div><div id="viewContent"></div></section></div>`;
-  $$("[data-view]").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.view)));
-  $("#logoutBtn").addEventListener("click",logout);
+  $("#landingMain").classList.add("hidden");
+  $("#siteFooter").classList.add("hidden");
+  $("#mainNav").classList.add("hidden");
+  $("#mobileMenu").classList.add("hidden");
+
+  const root = $("#workspaceRoot");
+  root.classList.remove("hidden");
+
+  root.innerHTML = `
+    <div class="ws-layout">
+      <aside class="ws-sidebar">
+        <div class="ws-user">
+          <strong>${escapeHtml(currentUser.username)}</strong>
+          <small>${escapeHtml(currentUser.role)}</small>
+        </div>
+
+        <div class="ws-nav">
+          <button data-view="dashboard" class="active">Overview</button>
+          <button data-view="tasks">Tasks</button>
+          <button data-view="history">History</button>
+          ${currentUser.role !== "member" ? '<button data-view="manage">Manage</button>' : ""}
+        </div>
+
+        <button class="ws-logout" id="logoutBtn">Sign out</button>
+      </aside>
+
+      <section class="ws-main">
+        <div class="ws-top">
+          <div>
+            <h1 id="viewTitle">Workspace overview</h1>
+            <p id="viewSubtitle">Your work, progress, and updates in one place.</p>
+          </div>
+          <span class="ws-pill">${escapeHtml(currentUser.role.toUpperCase())}</span>
+        </div>
+
+        <div id="viewContent"></div>
+
+        <footer class="ws-app-copyright">
+          © 2026 Ahoy's Productions. All rights reserved.
+        </footer>
+      </section>
+    </div>
+  `;
+
+  $$("[data-view]").forEach(button => {
+    button.addEventListener("click", () => showView(button.dataset.view));
+  });
+
+  $("#logoutBtn").addEventListener("click", logout);
 }
+
 async function enterWorkspace() {
   try {
     if(!currentUser) { const data=await api("/me"); currentUser=data.user; }
