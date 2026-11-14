@@ -285,6 +285,40 @@ nav a:hover, #mainNav a:hover, #mainNav .nav-login:hover {
   letter-spacing: -3px;
 }
 .hero h1 span, .section-heading h2 span, .final-cta h2 span { color: #c5ccd5; }
+/* Hero title — Gold Brush Stroke */
+.hero h1 span {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+  color: #ffd76a;
+  text-shadow: 0 0 18px rgba(255, 199, 74, .18);
+}
+
+.hero h1 span::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: -3%;
+  bottom: 7%;
+  width: 106%;
+  height: 38%;
+  transform: rotate(-2deg);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 184, 48, .08),
+    rgba(255, 193, 55, .48) 18%,
+    rgba(255, 211, 91, .72) 52%,
+    rgba(255, 184, 48, .35) 85%,
+    rgba(255, 184, 48, .05)
+  );
+  clip-path: polygon(
+    0 35%, 8% 18%, 18% 25%, 29% 5%,
+    42% 18%, 57% 0, 70% 15%, 83% 7%,
+    100% 20%, 96% 75%, 84% 65%, 72% 90%,
+    58% 76%, 43% 100%, 29% 78%, 15% 92%, 3% 70%
+  );
+  filter: blur(.5px);
+}
 .hero-copy > p {
   max-width: 450px;
   color: #a3acb7;
