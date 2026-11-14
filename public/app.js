@@ -88,11 +88,11 @@ async function api(path, options={}) {
 function humanError(error) {
   const map = {INVALID_CREDENTIALS:"Username atau password salah.",USERNAME_ALREADY_EXISTS:"Username sudah digunakan.",
     USERNAME_FORMAT_INVALID:"Username 3–24 karakter, hanya huruf kecil, angka, dan underscore.",
-    PASSWORD_TOO_SHORT:"Password minimal 8 karakter.",DIVISION_REQUIRED:"Pilih divisi sebelum membuat akun.",ACTIVE_DIVISION_NOT_FOUND:"Divisi tidak tersedia atau sudah dinonaktifkan.",TASK_TITLE_REQUIRED:"Judul task wajib diisi.",REPORTING_DEFERRED:"Laporan Google Sheets akan diaktifkan pada tahap berikutnya.",PASSWORD_PEPPER_NOT_CONFIGURED:"Password security secret belum dipasang di Cloudflare Worker.",INVALID_SETUP_SECRET:"Setup secret salah.",
+    PASSWORD_TOO_SHORT:"Password minimal 8 karakter.",DIVISION_REQUIRED:"Pilih divisi sebelum membuat akun atau tugas.",ACTIVE_DIVISION_NOT_FOUND:"Divisi tidak tersedia atau sudah dinonaktifkan.",TASK_TITLE_REQUIRED:"Judul task wajib diisi.",MEMBERS_REQUIRED:"Pilih minimal satu anggota.",MEMBER_SELECTION_INVALID:"Anggota yang dipilih tidak sesuai dengan divisi atau sudah tidak aktif.",ATTACHMENT_REQUIRED:"Tambahkan minimal satu file atau link.",INVALID_ATTACHMENT_URL:"Masukkan URL yang valid (http atau https).",FILE_TOO_LARGE_MAX_10MB:"Ukuran setiap file maksimal 10 MB.",TOTAL_FILES_TOO_LARGE_MAX_20MB:"Total ukuran semua file maksimal 20 MB.",TOO_MANY_FILES_MAX_5:"Maksimal 5 file dalam satu submission.",REPORTING_DEFERRED:"Laporan Google Sheets akan diaktifkan pada tahap berikutnya.",PASSWORD_PEPPER_NOT_CONFIGURED:"Password security secret belum dipasang di Cloudflare Worker.",INVALID_SETUP_SECRET:"Setup secret salah.",
     SETUP_SECRET_NOT_CONFIGURED:"SETUP_SECRET belum dipasang di Cloudflare Worker.",
     INITIAL_SETUP_ALREADY_COMPLETED:"Setup Pengawas sudah pernah dilakukan.",
-    TARGET_USER_NOT_FOUND:"Username target tidak ditemukan.",FILE_TOO_LARGE_MAX_5MB:"Ukuran file maksimal 5 MB.",
-    FILE_TYPE_NOT_ALLOWED:"Format file harus JPG, PNG, WEBP, atau PDF.",DIVISION_NAME_REQUIRED:"Nama divisi wajib diisi.",DIVISION_NAME_ALREADY_EXISTS:"Nama divisi sudah digunakan.",GOOGLE_SHEETS_NOT_CONFIGURED:"Google Sheets belum dikonfigurasi di Cloudflare.",GOOGLE_SHEETS_SYNC_FAILED:"Sinkronisasi Google Sheets gagal.",RESET_CONFIRMATION_REQUIRED:"Konfirmasi reset tidak sesuai.",UNAUTHORIZED:"Sesi berakhir. Silakan login kembali."};
+    TARGET_USER_NOT_FOUND:"Username target tidak ditemukan.",
+    FILE_TYPE_NOT_ALLOWED:"Format file harus gambar, PDF, Word, Excel, CSV, atau PowerPoint.",DIVISION_NAME_REQUIRED:"Nama divisi wajib diisi.",DIVISION_NAME_ALREADY_EXISTS:"Nama divisi sudah digunakan.",GOOGLE_SHEETS_NOT_CONFIGURED:"Google Sheets belum dikonfigurasi di Cloudflare.",GOOGLE_SHEETS_SYNC_FAILED:"Sinkronisasi Google Sheets gagal.",RESET_CONFIRMATION_REQUIRED:"Konfirmasi reset tidak sesuai.",UNAUTHORIZED:"Sesi berakhir. Silakan login kembali."};
   return map[error.message] || error.message || "Terjadi kesalahan.";
 }
 async function deriveBrowserPasswordHash(password, salt, iterations) {
@@ -183,10 +183,10 @@ function taskCard(t, admin=false) {
   const status=t.assignment_status;
   const actions = currentUser.role==="member" ? `
     ${status==="not_started"||status==="revision"?`<button class="ws-btn secondary" data-start="${t.assignment_id}">Start task</button>`:""}
-    ${status!=="completed"?`<form class="ws-proof-form" data-proof="${t.assignment_id}"><div class="ws-proof"><input type="file" name="file" accept="image/jpeg,image/png,image/webp,application/pdf" required><input name="note" placeholder="Add a note (optional)"><button class="ws-btn" type="submit">Submit proof</button></div><small class="ws-note">JPG, PNG, WEBP, PDF · max 5 MB</small></form>`:""}` : `
+    ${status!=="completed"?`<form class="ws-proof-form" data-proof="${t.assignment_id}"><div class="ws-proof"><input type="file" name="files" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx" multiple><input name="link" type="url" placeholder="Paste link / URL (optional)"><input name="note" placeholder="Add a note (optional)"><button class="ws-btn" type="submit">Submit proof</button></div><small class="ws-note">Images, PDF, Word, Excel, CSV, PowerPoint · max 10 MB/file, 20 MB total · or submit a link</small></form>`:""}` : `
     <div class="ws-actions">${status==="submitted"?`<button class="ws-btn" data-review="${t.assignment_id}" data-status="completed">Approve</button><button class="ws-btn danger" data-review="${t.assignment_id}" data-status="revision">Request revision</button>`:""}<button class="ws-btn danger" data-reset-progress="${t.assignment_id}">Reset progress</button></div>`;
   return `<article class="ws-task"><div class="ws-task-head"><div><h3>${escapeHtml(t.title)}</h3><p>${escapeHtml(t.description||"No description")}</p></div>${pill(status)}</div>
-    <div class="ws-meta"><span class="ws-pill">${escapeHtml(t.priority)} priority</span><span class="ws-pill">Deadline: ${dateText(t.deadline)}</span>${admin?`<span class="ws-pill blue">Member: ${escapeHtml(t.member_username)}</span>`:""}</div>
+    <div class="ws-meta"><span class="ws-pill">${escapeHtml(t.priority)} priority</span><span class="ws-pill">Start: ${t.start_time?dateText(t.start_time):"Not set"}</span><span class="ws-pill">Deadline: ${dateText(t.deadline)}</span>${admin?`<span class="ws-pill blue">Member: ${escapeHtml(t.member_username)}</span>`:""}</div>
     ${t.member_note?`<p><b>Member note:</b> ${escapeHtml(t.member_note)}</p>`:""}${t.reviewer_note?`<p><b>Review note:</b> ${escapeHtml(t.reviewer_note)}</p>`:""}
     <div class="ws-proof-list" data-proofs="${t.assignment_id}"><span class="ws-note">Loading submitted files...</span></div>
     <div class="ws-actions">${actions}</div></article>`;
@@ -203,9 +203,9 @@ function renderAssignmentTables(rows, staff, heading) {
   return [...grouped.entries()].map(([division, items]) => `
     <section class="ws-panel ws-division-table-panel">
       <div class="ws-panel-heading"><div><h2>${escapeHtml(heading)} — ${escapeHtml(division)}</h2><p class="ws-muted">${items.length} assignment(s)</p></div></div>
-      ${items.length ? `<div class="ws-table-wrap"><table class="ws-table ws-division-table"><thead><tr><th>Task</th>${staff?"<th>Username</th>":""}<th>Status</th><th>Deadline</th>${heading==="History"?"<th>Submitted</th><th>Reviewed</th>":""}<th>Details</th></tr></thead><tbody>
-      ${items.map(t => `<tr><td><strong>${escapeHtml(t.title)}</strong><small class="ws-table-sub">${escapeHtml(t.priority||"medium")} priority</small></td>${staff?`<td>${escapeHtml(t.member_username||"—")}</td>`:""}<td>${pill(t.assignment_status)}</td><td>${dateText(t.deadline)}</td>${heading==="History"?`<td>${dateText(t.submitted_at)}</td><td>${dateText(t.reviewed_at)}</td>`:""}<td>${t.assignment_id?`<button class="ws-btn secondary" type="button" data-expand-assignment="${escapeHtml(t.assignment_id)}">Details</button>`:'<span class="ws-note">Awaiting members</span>'}</td></tr>
-      ${t.assignment_id?`<tr id="assignment-detail-${escapeHtml(t.assignment_id)}" class="ws-assignment-detail" hidden><td colspan="${staff?(heading==="History"?7:5):(heading==="History"?6:4)}">${taskCard(t,staff)}</td></tr>`:""}`).join("")}
+      ${items.length ? `<div class="ws-table-wrap"><table class="ws-table ws-division-table"><thead><tr><th>Task</th>${staff?"<th>Username</th>":""}<th>Status</th><th>Start Time</th><th>Deadline</th>${heading==="History"?"<th>Submitted</th><th>Reviewed</th>":""}<th>Details</th></tr></thead><tbody>
+      ${items.map(t => `<tr><td><strong>${escapeHtml(t.title)}</strong><small class="ws-table-sub">${escapeHtml(t.priority||"medium")} priority</small></td>${staff?`<td>${escapeHtml(t.member_username||"—")}</td>`:""}<td>${pill(t.assignment_status)}</td><td>${t.start_time?dateText(t.start_time):"Not set"}</td><td>${dateText(t.deadline)}</td>${heading==="History"?`<td>${dateText(t.submitted_at)}</td><td>${dateText(t.reviewed_at)}</td>`:""}<td>${t.assignment_id?`<button class="ws-btn secondary" type="button" data-expand-assignment="${escapeHtml(t.assignment_id)}">Details</button>`:'<span class="ws-note">Awaiting members</span>'}</td></tr>
+      ${t.assignment_id?`<tr id="assignment-detail-${escapeHtml(t.assignment_id)}" class="ws-assignment-detail" hidden><td colspan="${staff?(heading==="History"?8:6):(heading==="History"?7:5)}">${taskCard(t,staff)}</td></tr>`:""}`).join("")}
       </tbody></table></div>` : '<div class="ws-empty">No tasks in this division yet.</div>'}
     </section>`).join("");
 }
@@ -221,13 +221,15 @@ async function showView(view) {
   } else if(view==="tasks") {
     box.innerHTML=renderAssignmentTables(tasksCache,currentUser.role!=="member","Tasks");
   } else if(view==="history") {
-    const rows=tasksCache.filter(t=>["completed","submitted","revision"].includes(t.assignment_status));
+    const rows=tasksCache.filter(t=>["completed","submitted","revision"].includes(t.assignment_status) || Number(t.has_submission_history)===1);
     box.innerHTML=renderAssignmentTables(rows,currentUser.role!=="member","History");
   } else if(view==="manage" && currentUser.role!=="member") {
     const divisionOptions = `<option value="">No division</option>` + divisionsCache.map(d=>`<option value="${escapeHtml(d.id)}" ${d.status!=="active"?"disabled":""}>${escapeHtml(d.name)}${d.status!=="active"?" (disabled)":""}</option>`).join("");
-    box.innerHTML=`<section class="ws-panel"><h2>Create a task</h2><p class="ws-muted">Choose one division. One click assigns this task to every active member in that division.</p>
+    box.innerHTML=`<section class="ws-panel"><h2>Create a task</h2><p class="ws-muted">Choose a division first, then select only the member(s) who should receive this task.</p>
       <form id="createTaskForm" class="ws-form"><div class="ws-field full"><label>Task title *</label><input name="title" required maxlength="140" placeholder="Task title"></div>
-      <div class="ws-field full"><label>Target division *</label><select name="divisionId" required><option value="">Choose division</option>${divisionsCache.filter(d=>d.status==="active").map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join("")}</select></div>
+      <div class="ws-field full"><label>Kolom Divisi *</label><select name="divisionId" id="taskDivisionSelect" required><option value="">Choose division</option>${divisionsCache.filter(d=>d.status==="active").map(d=>`<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}</option>`).join("")}</select></div>
+      <div class="ws-field full"><label>Kolom Anggota *</label><details class="ws-member-picker" id="taskMemberPicker"><summary id="taskMemberSummary">Pilih divisi terlebih dahulu</summary><div id="taskMemberOptions" class="ws-member-options"><span class="ws-note">Pilih divisi untuk memuat anggota.</span></div></details><small class="ws-note">Bisa memilih satu atau beberapa anggota. Anggota yang muncul hanya dari divisi terpilih.</small></div>
+      <div class="ws-field"><label>Waktu Mulai</label><input name="startTime" type="datetime-local"></div>
       <div class="ws-field"><label>Deadline</label><input name="deadline" type="datetime-local"></div>
       <div class="ws-field"><label>Priority</label><select name="priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></div>
       <div class="ws-field full"><label>Description</label><textarea name="description" placeholder="Task details and expected result"></textarea></div>
@@ -242,6 +244,7 @@ async function showView(view) {
         <div class="ws-task-list">${activityCache.slice(0,40).map(a=>`<div class="ws-log-row"><div><b>${escapeHtml((a.action||"").replaceAll("_"," "))}</b><small>${escapeHtml(a.actor_username||"System")} · ${dateText(a.created_at)}</small></div><span class="ws-note">${escapeHtml(a.target_type||"-")}</span></div>`).join("")||'<div class="ws-empty">No activity logs.</div>'}</div>
       </section>`;
     $("#createTaskForm").addEventListener("submit",createTask);
+    $("#taskDivisionSelect").addEventListener("change", renderTaskMemberOptions);
     $("#createDivisionForm").addEventListener("submit",createDivision);
     $$("[data-division-form]").forEach(f=>f.addEventListener("submit",saveDivision));
     $$("[data-save-member-division]").forEach(b=>b.addEventListener("click",saveMemberDivision));
@@ -258,18 +261,21 @@ function bindTaskActions() {
   }));
   $$(".ws-proof-list[data-proofs]").forEach(async box => {
     try {
-      const files = await api(`/assignments/${box.dataset.proofs}/proofs`);
-      if (!files.length) { box.innerHTML = '<span class="ws-note">No proof submitted yet.</span>'; return; }
-      box.innerHTML = `<div class="ws-note"><b>Submitted files</b></div>` + files.map(file =>
-        `<button type="button" class="ws-btn secondary" data-open-proof="${escapeHtml(file.id)}">${escapeHtml(file.original_name)} · ${(file.size_bytes/1024).toFixed(0)} KB</button>`
-      ).join(" ");
-      $$("[data-open-proof]", box).forEach(button => button.addEventListener("click", async () => {
+      const submissions = await api(`/assignments/${box.dataset.proofs}/submissions`);
+      if (!submissions.length) { box.innerHTML = '<span class="ws-note">No submission attachments yet.</span>'; return; }
+      const versionCount = submissions.filter(item => item.id !== "legacy").length;
+      box.innerHTML = `<div class="ws-note"><b>Submission history (${versionCount} version(s))</b></div>` + submissions.map((submission, index) => `
+        <div class="ws-submission-version"><div class="ws-note"><b>${submission.id === "legacy" ? "Legacy upload" : `Version ${versionCount - submissions.filter(item => item.id !== "legacy").indexOf(submission)}`}</b> · ${dateText(submission.submitted_at)}</div>
+        ${submission.member_note?`<p><b>Member note:</b> ${escapeHtml(submission.member_note)}</p>`:""}
+        ${(submission.reviews||[]).map(review=>`<p class="ws-note"><b>${review.status==="completed"?"Approved":"Revision requested"}</b> · ${dateText(review.reviewed_at)} · ${escapeHtml(review.reviewer_username||"Reviewer")}${review.note?`<br>${escapeHtml(review.note)}`:""}</p>`).join("")}
+        <div class="ws-attachment-list">${(submission.attachments||[]).map(item => item.attachment_type==="link" ? `<a class="ws-btn secondary" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">Open link ↗</a>` : `<span class="ws-attachment-actions"><button type="button" class="ws-btn secondary" data-open-proof="${escapeHtml(item.id)}">View</button><button type="button" class="ws-btn secondary" data-download-proof="${escapeHtml(item.id)}" data-download-name="${escapeHtml(item.original_name||"attachment")}">Download ${escapeHtml(item.original_name||"Attachment")} · ${(Number(item.size_bytes||0)/1024).toFixed(0)} KB</button></span>`).join("") || '<span class="ws-note">No attachments</span>'}</div></div>`).join("");
+      $$ ("[data-open-proof]", box).forEach(button => button.addEventListener("click", async () => {
         try {
           const token = localStorage.getItem("ahoyWorkspaceToken");
           const response = await fetch(`${API}/proofs/${encodeURIComponent(button.dataset.openProof)}`, {
             headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store"
           });
-          if (!response.ok) throw new Error("Unable to open proof file");
+          if (!response.ok) throw new Error("Unable to open attachment");
           const blob = await response.blob();
           const objectUrl = URL.createObjectURL(blob);
           const link = document.createElement("a");
@@ -277,12 +283,27 @@ function bindTaskActions() {
           setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
         } catch (error) { alert(humanError(error)); }
       }));
-    } catch { box.innerHTML = '<span class="ws-note">Could not load proof files.</span>'; }
+      $$ ("[data-download-proof]", box).forEach(button => button.addEventListener("click", async () => {
+        try {
+          const token = localStorage.getItem("ahoyWorkspaceToken");
+          const response = await fetch(`${API}/proofs/${encodeURIComponent(button.dataset.downloadProof)}?download=1`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}, cache: "no-store"
+          });
+          if (!response.ok) throw new Error("Unable to download attachment");
+          const blob = await response.blob();
+          const objectUrl = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = objectUrl; link.download = button.dataset.downloadName || "attachment"; link.click();
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+        } catch (error) { alert(humanError(error)); }
+      }));
+    } catch { box.innerHTML = '<span class="ws-note">Could not load submission history.</span>'; }
   });
+
   $$("[data-start]").forEach(b=>b.addEventListener("click",async()=>{try{await api(`/assignments/${b.dataset.start}/status`,{method:"PATCH",body:"{}"});await showView(activeView);}catch(e){alert(humanError(e));}}));
   $$(".ws-proof-form").forEach(f=>f.addEventListener("submit",async e=>{e.preventDefault();const fd=new FormData(f);const b=$("button",f);b.disabled=true;try{await api(`/assignments/${f.dataset.proof}/proof`,{method:"POST",body:fd});await showView(activeView);}catch(err){alert(humanError(err));b.disabled=false;}}));
   $$("[data-review]").forEach(b=>b.addEventListener("click",async()=>{const note=prompt(b.dataset.status==="completed"?"Optional approval note:":"What needs to be revised?")||"";try{await api(`/assignments/${b.dataset.review}/review`,{method:"POST",body:JSON.stringify({status:b.dataset.status,note})});await showView(activeView);}catch(e){alert(humanError(e));}}));
-  $$ ("[data-reset-progress]").forEach(b=>b.addEventListener("click",async()=>{if(!confirm("Reset this member's task progress? Status and notes will be cleared. Uploaded proof files will be preserved."))return;try{await api("/admin/assignments/reset",{method:"POST",body:JSON.stringify({assignmentId:b.dataset.resetProgress})});await showView(activeView);}catch(e){alert(humanError(e));}}));
+  $$ ("[data-reset-progress]").forEach(b=>b.addEventListener("click",async()=>{if(!confirm("Reset this member's current task progress? Submission versions, review history, and all uploaded files/links will remain preserved."))return;try{await api("/admin/assignments/reset",{method:"POST",body:JSON.stringify({assignmentId:b.dataset.resetProgress})});await showView(activeView);}catch(e){alert(humanError(e));}}));
 }
 async function createDivision(e) {
   e.preventDefault(); const data=Object.fromEntries(new FormData(e.currentTarget).entries());
@@ -325,17 +346,33 @@ async function syncGoogleSheetsNow(e) {
 }
 
 async function resetActivityHistory() {
-  const warning="This will clear workspace activity logs for everyone. Accounts, tasks, progress, and uploaded proofs will NOT be deleted. A single audit record of this reset will remain.";
+  const warning="This will clear workspace activity logs for everyone. Accounts, tasks, progress, submission history, and all uploaded attachments will NOT be deleted. Submission History is permanent. A single audit record of this reset will remain.";
   if(!confirm(`WARNING — RESET ACTIVITY HISTORY\n\n${warning}\n\nContinue?`)) return;
   const phrase=prompt('Type RESET HISTORY to confirm this action:');
   if(phrase!=="RESET HISTORY") { alert("Reset cancelled. Confirmation text did not match."); return; }
   try { const result=await api("/admin/activity/reset",{method:"POST",body:JSON.stringify({confirmation:phrase})}); alert(`Activity history reset. ${result.deletedCount} log(s) cleared. One audit record was retained.`); await showView("manage"); }
   catch(err) { alert(humanError(err)); }
 }
+function renderTaskMemberOptions() {
+  const divisionId = $("#taskDivisionSelect")?.value || "";
+  const host = $("#taskMemberOptions"), summary = $("#taskMemberSummary");
+  if (!host || !summary) return;
+  const members = usersCache.filter(u => u.role === "member" && u.status === "active" && u.division_id === divisionId);
+  host.innerHTML = members.length ? members.map(member => `<label class="ws-member-option"><input type="checkbox" name="memberIds" value="${escapeHtml(member.id)}"><span>${escapeHtml(member.username)}</span></label>`).join("") : '<span class="ws-note">Tidak ada anggota aktif di divisi ini.</span>';
+  summary.textContent = members.length ? `Pilih anggota (${members.length} tersedia)` : "Tidak ada anggota tersedia";
+  host.querySelectorAll('input[name="memberIds"]').forEach(input => input.addEventListener("change", () => {
+    const count = host.querySelectorAll('input[name="memberIds"]:checked').length;
+    summary.textContent = count ? `${count} anggota dipilih` : `Pilih anggota (${members.length} tersedia)`;
+  }));
+}
 async function createTask(e) {
-  e.preventDefault(); const data=Object.fromEntries(new FormData(e.currentTarget).entries());
+  e.preventDefault();
+  const form=e.currentTarget, data=Object.fromEntries(new FormData(form).entries());
+  data.memberIds = $$('input[name="memberIds"]:checked', form).map(input => input.value);
+  if(data.startTime) data.startTime=new Date(data.startTime).toISOString();
   if(data.deadline) data.deadline=new Date(data.deadline).toISOString();
-  try { const result=await api("/tasks",{method:"POST",body:JSON.stringify(data)}); alert(`Task created for ${result.division}. Assigned to ${result.assigned} active member(s). New members joining this division will also receive its existing tasks.`); await showView("tasks"); }
+  if(!data.memberIds.length) { alert("Pilih minimal satu anggota dari divisi tersebut."); return; }
+  try { const result=await api("/tasks",{method:"POST",body:JSON.stringify(data)}); alert(`Task berhasil dibuat untuk ${result.division}. Ditugaskan kepada ${result.assigned} anggota yang dipilih.`); await showView("tasks"); }
   catch(err){alert(humanError(err));}
 }
 async function changeRole(e) {
