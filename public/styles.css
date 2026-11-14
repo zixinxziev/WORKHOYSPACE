@@ -48,3 +48,49 @@
 .ws-submission-version{padding:12px 0;border-top:1px solid var(--line,rgba(255,255,255,.12))}
 .ws-attachment-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .ws-attachment-actions{display:inline-flex;flex-wrap:wrap;gap:6px}
+
+
+
+/* =========================================================
+   AHOY'S WORKSPACE — MIDNIGHT GLASS / SILVER UI
+   Visual layer only. Existing application structure retained.
+   ========================================================= */
+:root{
+  color-scheme:dark;
+  --bg:#080a0d;
+  --panel:rgba(24,27,32,.66);
+  --panel2:rgba(32,36,42,.72);
+  --line:rgba(210,218,228,.13);
+  --text:#edf0f4;
+  --muted:#9da5b0;
+  --purple:#aeb5c0;
+  --purple2:#d4d9e0;
+  --blue:#aeb8c5;
+  --silver:#c5cbd4;
+  --silver-soft:#929ba8;
+  --font:'DM Sans',sans-serif;
+  --display:'Manrope',sans-serif;
+}
+html{background:var(--bg);scroll-behavior:smooth}
+body{
+  background:
+    radial-gradient(ellipse at 18% 4%,rgba(135,148,164,.12),transparent 34%),
+    radial-gradient(ellipse at 88% 42%,rgba(92,105,121,.10),transparent 38%),
+    linear-gradient(145deg,#080a0d 0%,#0c0f13 48%,#090b0e 100%);
+  color:var(--text);
+}
+body:before{
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opacity:.15;
+  background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+.ambient{filter:blur(115px);opacity:.22}
+.ambient-one{background:#77818e}
+.ambient-two{background:#4d5967}
+.site-header{
+  background:rgba(9,11,14,.72);
+  border-bottom:1px solid rgba(218,225,234,.10);
+  box-shadow:0 10px 40px rgba(0,0,0,.18);
+  backdrop-filter:blur(28px) saturate(145%);
+  -webkit-backdrop-filter:blur(28px) saturate(145%);
+}
